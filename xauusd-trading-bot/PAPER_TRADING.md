@@ -37,6 +37,22 @@ around the daily close, **~22:00 UTC (03:30 IST)**. Turn off sleep while paper t
    Cloudflare tunnel for a fixed URL. Anyone with the URL can reach the bridge, but every request needs the
    secret, and paper mode can't touch real money.
 
+### Optional: accept only TradingView's IPs
+
+The secret stays the main guard; this is extra protection. Behind cloudflared every request reaches the bridge
+from 127.0.0.1, so the bridge must take the real client IP from Cloudflare's `CF-Connecting-IP` header. Add to
+`.env`, then restart the bridge:
+
+```
+IP_ALLOWLIST=52.89.214.238,34.212.75.30,54.218.53.128,52.32.178.7
+TRUSTED_IP_HEADER=CF-Connecting-IP
+```
+
+Check the IPs against TradingView's help page ("How to configure webhook alerts") first; the list can change. If
+TradingView changes them without notice, alerts start failing with 403, so look at the alert log's *Webhook status*
+column after enabling this. Setting `IP_ALLOWLIST` without `TRUSTED_IP_HEADER` rejects everything, and the bridge
+warns about it at startup.
+
 ## Check on it
 
 ```powershell

@@ -11,12 +11,14 @@ Note: TradingView only delivers webhooks to ports 80/443, so put this behind a r
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Optional
 
 from .brokers import make_broker
-from .config import Config
+from .config import Config, is_loopback
 from .engine import Engine
 from .journal import Journal, utc_now
 from .news import DEFAULT_PATH as NEWS_DEFAULT, NewsCalendar
@@ -26,6 +28,8 @@ log = logging.getLogger("bridge")
 
 
 def make_handler(engine: Engine, cfg: Config):
+    allowlist = cfg.allowlist_networks()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "xau-bridge/1.0"
 
@@ -37,9 +41,28 @@ def make_handler(engine: Engine, cfg: Config):
             self.end_headers()
             self.wfile.write(body)
 
-        def _client_ip(self) -> str:
-            fwd = self.headers.get("X-Forwarded-For")
-            return fwd.split(",")[0].strip() if fwd else self.client_address[0]
+        def _client_ip(self) -> Optional[str]:
+            """The real client IP, or None if unknown. X-Forwarded-For is never read: clients can set it.
+            The configured trusted header is used only when the peer is loopback, i.e. a local proxy."""
+            peer = self.client_address[0]
+            value = peer
+            if cfg.trusted_ip_header and is_loopback(peer):
+                value = self.headers.get(cfg.trusted_ip_header)
+                if value is None:
+                    return None
+            try:
+                return str(ipaddress.ip_address(value.strip()))
+            except ValueError:
+                return None
+
+        def _allowed(self) -> bool:
+            ip = self._client_ip()
+            if ip is None:
+                log.warning("client IP unknown (%s missing or invalid on a request from %s): rejected",
+                            cfg.trusted_ip_header or "peer address", self.client_address[0])
+                return False
+            addr = ipaddress.ip_address(ip)
+            return any(addr in net for net in allowlist)
 
         def do_GET(self):  # noqa: N802
             if self.path == "/health":
@@ -58,18 +81,24 @@ def make_handler(engine: Engine, cfg: Config):
             self._send(404, {"error": "not found"})
 
         def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                self.close_connection = True
+                return self._send(413, {"error": "bad body size"})
+            # read the body before any rejection: closing a socket with unread data resets the connection
+            # on Windows, and the client would see an error instead of our status code
+            raw = self.rfile.read(length) if length > 0 else b""
             if self.path != "/webhook":
                 return self._send(404, {"error": "not found"})
-            if cfg.ip_allowlist and self._client_ip() not in cfg.ip_allowlist:
+            if allowlist and not self._allowed():
                 return self._send(403, {"error": "forbidden"})
-            length = int(self.headers.get("Content-Length") or 0)
-            if length <= 0 or length > MAX_BODY:
-                return self._send(413 if length > MAX_BODY else 400, {"error": "bad body size"})
-            result = engine.handle_raw(self.rfile.read(length))
+            if not raw:
+                return self._send(400, {"error": "bad body size"})
+            result = engine.handle_raw(raw)
             self._send(result.http_status, result.as_dict())
 
         def log_message(self, fmt, *args):
-            log.info("%s %s", self._client_ip(), fmt % args)
+            log.info("%s %s", self._client_ip() or "unknown-ip", fmt % args)
 
     return Handler
 
@@ -78,6 +107,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = Config.from_env()
     cfg.validate()
+    for msg in cfg.warnings():
+        log.warning(msg)
     news = None
     if cfg.news_block_hours > 0:
         news = NewsCalendar.load(cfg.news_calendar or NEWS_DEFAULT, cfg.news_events)

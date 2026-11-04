@@ -1,10 +1,19 @@
 """Configuration loaded from environment variables."""
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 from dataclasses import dataclass, field
 
 LIVE_CONFIRMATION = "yes-i-understand-the-risk"
+
+
+def is_loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
 
 
 def _env(name: str, default: str) -> str:
@@ -28,7 +37,10 @@ class Config:
     max_trades_per_day: int = 4
     max_signal_delay_s: int = 120      # reject alerts older than bar close + this
     kill_switch_file: str = "KILL_SWITCH"
-    ip_allowlist: tuple[str, ...] = ()  # empty = allow any
+    ip_allowlist: tuple[str, ...] = ()  # IPs or CIDR ranges; empty = allow any
+    # Header carrying the real client IP, trusted only on requests from a loopback peer (a local proxy such
+    # as cloudflared). "" = trust no header. Cloudflare sets CF-Connecting-IP and overwrites client values.
+    trusted_ip_header: str = ""
 
     # Paper broker
     paper_start_balance: float = 10_000.0
@@ -69,6 +81,7 @@ class Config:
             max_signal_delay_s=int(_env("MAX_SIGNAL_DELAY_S", "120")),
             kill_switch_file=_env("KILL_SWITCH_FILE", "KILL_SWITCH"),
             ip_allowlist=tup("IP_ALLOWLIST", ""),
+            trusted_ip_header=_env("TRUSTED_IP_HEADER", "").strip(),
             paper_start_balance=float(_env("PAPER_START_BALANCE", "10000")),
             paper_spread=float(_env("PAPER_SPREAD", "0.30")),
             paper_state_file=_env("PAPER_STATE_FILE", "paper_state.json"),
@@ -88,6 +101,9 @@ class Config:
             raise ValueError("WEBHOOK_SECRET must be set and at least 16 characters long")
         if self.broker not in ("paper", "oanda"):
             raise ValueError(f"Unknown BROKER {self.broker!r}")
+        if self.trusted_ip_header and not re.fullmatch(r"[A-Za-z0-9-]+", self.trusted_ip_header):
+            raise ValueError("TRUSTED_IP_HEADER must be a single header name, e.g. CF-Connecting-IP")
+        self.allowlist_networks()          # raises on a bad IP_ALLOWLIST entry
         if self.broker == "oanda":
             if not (self.oanda_account_id and self.oanda_token):
                 raise ValueError("OANDA_ACCOUNT_ID and OANDA_TOKEN are required for BROKER=oanda")
@@ -97,3 +113,18 @@ class Config:
                 raise ValueError(
                     f"Live trading refused: set ALLOW_LIVE_TRADING={LIVE_CONFIRMATION} to enable it"
                 )
+
+    def allowlist_networks(self) -> list:
+        try:
+            return [ipaddress.ip_network(e, strict=False) for e in self.ip_allowlist]
+        except ValueError as exc:
+            raise ValueError(f"IP_ALLOWLIST: {exc}") from None
+
+    def warnings(self) -> list[str]:
+        """Settings that are valid but almost certainly not what the user wants."""
+        out = []
+        if self.ip_allowlist and is_loopback(self.host) and not self.trusted_ip_header:
+            out.append("IP_ALLOWLIST is set but the bridge listens on loopback with no TRUSTED_IP_HEADER: every "
+                       "request will appear to come from 127.0.0.1 and be rejected. Behind cloudflared, set "
+                       "TRUSTED_IP_HEADER=CF-Connecting-IP.")
+        return out

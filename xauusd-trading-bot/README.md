@@ -243,7 +243,10 @@ touch KILL_SWITCH                   # instantly block new entries (closes and st
 
 ### What the bridge enforces (even if Pine inputs are wrong)
 
-* shared-secret auth (constant-time compare), optional IP allowlist, 16 KB body limit
+* shared-secret auth (constant-time compare), 16 KB body limit
+* optional `IP_ALLOWLIST` (IPs or CIDR ranges). The client IP is the socket address, or, only for requests from a
+  loopback proxy, the header named in `TRUSTED_IP_HEADER` (`CF-Connecting-IP` behind cloudflared).
+  `X-Forwarded-For` is never trusted, since any client can set it. A missing or malformed header is rejected (403)
 * symbol whitelist, required stop on every entry (no unprotected trades)
 * stop updates are **tighten-only** and refused if on the wrong side of price
 * stale-alert rejection, duplicate-alert suppression, one position at a time
