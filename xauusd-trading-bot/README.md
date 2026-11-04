@@ -8,7 +8,7 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
 | **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
 | **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
-| **Tests** | `tests/` | 62 tests: `python -m unittest discover -s tests -t .` |
+| **Tests** | `tests/` | 64 tests: `python -m unittest discover -s tests -t .` |
 
 > **Bottom line:** over 2000–2026 this made **3.7%/yr with a −8.8% worst drawdown** at 1% risk per trade.
 > Buying and holding gold made 10.9%/yr but fell **−44%** on the way. The bot earns about **1.7× more return per unit of
@@ -97,6 +97,29 @@ each bull run. It's in the market about 48% of the time, so idle cash could also
 
 \* partial years. The worst losing year was −2.9%. Gold had an exceptional decade, which a trend system with
 small, risk-capped positions captures only partly.
+
+### Profitability and drawdown by period (last 10 years, default settings)
+
+Equity marked at daily closes, $25k start on 4 Nov 2016. "Flat" = no open position, so no gain or loss.
+
+| | Daily | Weekly | Monthly | Yearly |
+|---|---|---|---|---|
+| Periods | 2,514 | 523 | 121 | 11 |
+| **Profitable** | **29.4%** | **33.3%** | **43.0%** | **63.6%** |
+| Losing | 24.8% | 30.4% | 38.0% | 36.4% |
+| Flat (out of market) | 45.8% | 36.3% | 19.0% | 0% |
+| Profitable when in a trade | 54.3% | 52.3% | 53.1% | 63.6% |
+| Average return | +0.01% | +0.05% | +0.22% | +2.5% |
+| Best period | +2.25% | +2.62% | +4.76% | +10.49% |
+| Worst period | −1.26% | −1.29% | −1.83% | −2.91% |
+| Avg drawdown within period | −0.06% | −0.26% | −0.76% | −3.34% |
+| **Worst drawdown within period** | **−1.26%** | **−1.68%** | **−2.02%** | **−5.94%** |
+| Gold buy & hold: profitable | 53.6% | 56.4% | 57.0% | 54.5% |
+| Gold buy & hold: worst drawdown | −10.8% | −10.8% | −17.6% | −26.7% |
+
+Reproduce with `python -m backtest.run gold_daily.csv --start 2016-11-04 --periods`. Note: `--start` warms the
+indicators up on all earlier data, so the account size and open positions at the start date can differ slightly
+from a run that begins in 2015.
 
 ### The risk dial: you choose the drawdown
 

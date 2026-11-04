@@ -261,3 +261,48 @@ def compute_stats(res: Result) -> dict:
         "time_in_market_pct": round(in_mkt * 100, 1),
         "sharpe_daily": round(sharpe, 2),
     }
+
+
+PERIODS = {"daily": "1D", "weekly": "W-FRI", "monthly": "ME", "yearly": "YE"}
+
+
+def period_stats(equity: pd.Series) -> pd.DataFrame:
+    """Profitability and drawdown of the equity curve by calendar period.
+
+    For each horizon: share of periods that were profitable / losing / flat (no position, return 0),
+    average, best and worst period return, and drawdown measured *inside* each period from its
+    running peak (seeded with the previous period's closing equity). Partial first/last periods count.
+    Equity is marked at daily closes, so intraday dips are not included.
+    """
+    eq = equity.copy()
+    if eq.index.tz is not None:
+        eq.index = eq.index.tz_convert(None)
+    rows = {}
+    for name, rule in PERIODS.items():
+        rets, dds = [], []
+        prev_close = float(eq.iloc[0])
+        for _, seg in eq.groupby(pd.Grouper(freq=rule)):
+            if seg.empty:
+                continue
+            path = np.concatenate([[prev_close], seg.to_numpy(dtype=float)])
+            peak = np.maximum.accumulate(path)
+            dds.append(float(((path - peak) / peak).min() * 100))
+            rets.append((float(seg.iloc[-1]) / prev_close - 1) * 100)
+            prev_close = float(seg.iloc[-1])
+        rets, dds = np.array(rets), np.array(dds)
+        flat = np.abs(rets) < 1e-9
+        active = rets[~flat]
+        rows[name] = {
+            "periods": int(len(rets)),
+            "profitable_pct": round(float((rets > 1e-9).mean() * 100), 1),
+            "losing_pct": round(float((rets < -1e-9).mean() * 100), 1),
+            "flat_pct": round(float(flat.mean() * 100), 1),
+            "profitable_when_in_market_pct": round(float((active > 0).mean() * 100), 1) if len(active) else 0.0,
+            "avg_return_pct": round(float(rets.mean()), 3),
+            "median_return_pct": round(float(np.median(rets)), 3),
+            "best_pct": round(float(rets.max()), 2),
+            "worst_pct": round(float(rets.min()), 2),
+            "avg_drawdown_pct": round(float(dds.mean()), 2),
+            "worst_drawdown_pct": round(float(dds.min()), 2),
+        }
+    return pd.DataFrame(rows)

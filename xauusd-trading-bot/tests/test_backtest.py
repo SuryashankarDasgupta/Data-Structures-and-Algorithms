@@ -94,3 +94,21 @@ class RunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PeriodStatsTests(unittest.TestCase):
+    def test_flat_and_rising(self):
+        from backtest.engine import period_stats
+        idx = pd.date_range("2024-01-01", periods=60, freq="1D", tz="UTC")
+        flat = period_stats(pd.Series(100.0, index=idx))
+        self.assertEqual(flat.loc["flat_pct", "daily"], 100.0)
+        rising = period_stats(pd.Series(np.linspace(100, 160, 60), index=idx))
+        self.assertEqual(rising.loc["losing_pct", "monthly"], 0.0)
+        self.assertEqual(rising.loc["worst_drawdown_pct", "weekly"], 0.0)
+
+    def test_drawdown_inside_period(self):
+        from backtest.engine import period_stats
+        idx = pd.date_range("2024-01-01", periods=4, freq="1D", tz="UTC")
+        st = period_stats(pd.Series([100.0, 110.0, 99.0, 105.0], index=idx))
+        self.assertAlmostEqual(st.loc["worst_drawdown_pct", "monthly"], -10.0)   # 110 -> 99
+        self.assertAlmostEqual(st.loc["best_pct", "monthly"], 5.0)
