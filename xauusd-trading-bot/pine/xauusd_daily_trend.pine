@@ -1,0 +1,162 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// XAUUSD Daily Trend: long-only (shorts optional) trend following with a chandelier trailing stop.
+//
+// Why this design (see README "Research"): on 26 years of gold data (2000-2026), slow daily trend
+// following was the only approach that stayed profitable on data it was NOT tuned on. All 80
+// parameter combinations tested were profitable in 2016-2026. Hourly pullback, London-breakout
+// and overnight-session ideas all failed out of sample.
+//
+// Rules  (use on a DAILY chart, e.g. OANDA:XAUUSD 1D)
+//   Entry : EMA(fast) > EMA(slow) and close > EMA(fast)  -> buy next open
+//   Stop  : signal close - initATR x ATR, then trailed up to (highest high since entry - trailATR x ATR)
+//   Exit  : trailing stop hit, or EMA(fast) falls below EMA(slow) (exit next open)
+//   Size  : equity x risk% (default 2%) / (initATR x ATR), capped at maxLev x equity notional, rounded down to qty step
+//   News  : high-impact USD releases (FOMC, NFP, CPI) on the next session -> no new entry (default),
+//           or optionally tighten the stop / go flat. Dates are embedded below (2015 -> latest published
+//           schedule); add new ones in the "Extra event dates" input until the script is updated.
+//
+// Webhook alert setup (see README):
+//   Condition : this strategy -> "Order fills and alert() function calls"
+//   Message   : {"secret":"<YOUR_SECRET>","price":{{strategy.order.price}},"signal":{{strategy.order.alert_message}}}
+//   Optional  : set "Secret for stop-update alerts" so the bridge can trail the broker-side stop too.
+//
+// Educational tool. Not financial advice. Backtest and paper trade before risking money.
+
+//@version=5
+// Spread (~0.30 USD/oz round trip) is modelled as a 0.15 USD per-oz commission on each side.
+strategy("XAUUSD Daily Trend (risk-managed)", shorttitle="XAU Trend", overlay=true,
+     initial_capital=25000, currency=currency.USD,
+     default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.15,
+     slippage=0, pyramiding=0, margin_long=5, margin_short=5)
+
+// ───────────────────────── Inputs ─────────────────────────
+grpT = "Trend"
+fastLen     = input.int(20,  "Fast EMA",  minval=2,  group=grpT)
+slowLen     = input.int(200, "Slow EMA",  minval=10, group=grpT)
+allowShorts = input.bool(false, "Allow shorts (worse historically on gold)", group=grpT)
+
+grpR = "Risk"
+riskPct  = input.float(2.0, "Risk per trade (% equity)", minval=0.1, maxval=3.0, step=0.1, group=grpR, tooltip="Return and drawdown scale together. 2000-2026: 1% -> 3.7%/yr, -8.8% max drawdown; 2% -> 6.4%/yr, -17.5%. Above 2% adds little because the no-leverage cap limits size.")
+atrLen   = input.int(14, "ATR length", minval=2, group=grpR)
+initAtr  = input.float(2.0, "Initial stop (x ATR)", minval=0.5, step=0.1, group=grpR)
+trailAtr = input.float(2.5, "Trailing stop (x ATR)", minval=0.5, step=0.1, group=grpR)
+maxLev   = input.float(1.0, "Max notional (x equity)", minval=0.1, step=0.1, group=grpR)
+qtyStep  = input.float(1.0, "Quantity step (oz)", minval=0.01, group=grpR, tooltip="1 = whole ounces (0.01 lot on most CFD brokers). Use smaller only if your broker allows it.")
+
+grpN = "High-impact news"
+newsMode   = input.string("Block entries", "News handling", options=["Off", "Block entries", "Tighten stop", "Go flat"], group=grpN, tooltip="Applies when an FOMC decision, NFP or CPI release falls on the next trading session. 10-year backtest at 2% risk: Off 5.59%/yr, Block 5.52%/yr, Tighten 5.08%/yr, Go flat 3.85%/yr. Block is the default because live spreads/slippage at release time are not in the backtest.")
+useFomc    = input.bool(true, "FOMC rate decisions", group=grpN, inline="ev")
+useNfp     = input.bool(true, "NFP", group=grpN, inline="ev")
+useCpi     = input.bool(true, "CPI", group=grpN, inline="ev")
+tightenAtr = input.float(1.0, "Tighten stop to (x ATR below close)", minval=0.2, step=0.1, group=grpN)
+extraDates = input.string("", "Extra event dates (YYYYMMDD, comma separated)", group=grpN)
+
+grpA = "Alerts"
+symbolOut  = input.string("XAUUSD", "Symbol sent in alerts", group=grpA)
+stopSecret = input.string("", "Secret for stop-update alerts (optional)", group=grpA, tooltip="If set, an alert() is sent at each daily close when the trailing stop moves, so the bridge can move the broker-side stop. Keep the script private if you use this.")
+
+// ───────────────────────── News calendar ─────────────────────────
+// Release dates in New York time (the trading date of the daily bar). Sources: federalreserve.gov, bls.gov.
+FOMC_DATES = "20160127,20160316,20160427,20160615,20160727,20160921,20161102,20161214,20170201,20170315,20170503,20170614,20170726,20170920,20171101,20171213,20180131,20180321,20180502,20180613,20180801,20180926,20181108,20181219,20190130,20190320,20190501,20190619,20190731,20190918,20191030,20191211,20200129,20200303,20200315,20200429,20200610,20200729,20200916,20201105,20201216,20210127,20210317,20210428,20210616,20210728,20210922,20211103,20211215,20220126,20220316,20220504,20220615,20220727,20220921,20221102,20221214,20230201,20230322,20230503,20230614,20230726,20230920,20231101,20231213,20240131,20240320,20240501,20240612,20240731,20240918,20241107,20241218,20250129,20250319,20250507,20250618,20250730,20250917,20251029,20251210,20260128,20260318,20260429,20260617,20260729,20260916,20261028,20261209"
+NFP_DATES  = "20150109,20150206,20150306,20150403,20150508,20150605,20150702,20150807,20150904,20151002,20151106,20151204,20160108,20160205,20160304,20160401,20160506,20160603,20160708,20160805,20160902,20161007,20161104,20161202,20170106,20170203,20170310,20170407,20170505,20170602,20170707,20170804,20170901,20171006,20171103,20171208,20180105,20180202,20180309,20180406,20180504,20180601,20180706,20180803,20180907,20181005,20181102,20181207,20190104,20190201,20190308,20190405,20190503,20190607,20190705,20190802,20190906,20191004,20191101,20191206,20200110,20200207,20200306,20200403,20200508,20200605,20200702,20200807,20200904,20201002,20201106,20201204,20210108,20210205,20210305,20210402,20210507,20210604,20210702,20210806,20210903,20211008,20211105,20211203,20220107,20220204,20220304,20220401,20220506,20220603,20220708,20220805,20220902,20221007,20221104,20221202,20230106,20230203,20230310,20230407,20230505,20230602,20230707,20230804,20230901,20231006,20231103,20231208,20240105,20240202,20240308,20240405,20240503,20240607,20240705,20240802,20240906,20241004,20241101,20241206,20250110,20250207,20250307,20250404,20250502,20250606,20250703,20250801,20250905,20251120,20251216,20260109,20260211,20260306,20260403,20260508,20260605,20260702,20260807,20260904,20261002,20261106"
+CPI_DATES  = "20150116,20150226,20150324,20150417,20150522,20150618,20150717,20150819,20150916,20151015,20151117,20151215,20160120,20160219,20160316,20160414,20160517,20160616,20160715,20160816,20160916,20161018,20161117,20161215,20170118,20170215,20170315,20170414,20170512,20170614,20170714,20170811,20170914,20171013,20171115,20171213,20180112,20180214,20180313,20180411,20180510,20180612,20180712,20180810,20180913,20181011,20181114,20181212,20190111,20190213,20190312,20190410,20190510,20190612,20190711,20190813,20190912,20191010,20191113,20191211,20200114,20200213,20200311,20200410,20200512,20200610,20200714,20200812,20200911,20201013,20201112,20201210,20210113,20210210,20210310,20210413,20210512,20210610,20210713,20210811,20210914,20211013,20211110,20211210,20220112,20220210,20220310,20220412,20220511,20220610,20220713,20220810,20220913,20221013,20221110,20221213,20230112,20230214,20230314,20230412,20230510,20230613,20230712,20230810,20230913,20231012,20231114,20231212,20240111,20240213,20240312,20240410,20240515,20240612,20240711,20240814,20240911,20241010,20241113,20241211,20250115,20250212,20250312,20250410,20250513,20250611,20250715,20250812,20250911,20251024,20251218,20260113,20260213,20260311,20260410,20260512,20260610,20260714,20260812,20260911,20261014"
+
+f_ymd(int t) =>
+    year(t, "America/New_York") * 10000 + month(t, "America/New_York") * 100 + dayofmonth(t, "America/New_York")
+
+var map<int, bool> newsDays = map.new<int, bool>()
+if barstate.isfirst
+    string allDates = (useFomc ? FOMC_DATES + "," : "") + (useNfp ? NFP_DATES + "," : "") + (useCpi ? CPI_DATES + "," : "") + extraDates
+    for s in str.split(allDates, ",")
+        v = str.tonumber(s)
+        if not na(v)
+            newsDays.put(int(v), true)
+
+// True if a release falls after this bar's trading date and on/before the next session's date
+// (a Friday bar looks at Sat, Sun and Mon). time_close is used because FX daily bars open the evening before.
+f_newsAhead() =>
+    bool found = false
+    for k = 1 to 3
+        t = time_close + k * 86400000
+        if newsDays.contains(f_ymd(t))
+            found := true
+        dow = dayofweek(t, "America/New_York")
+        if dow != dayofweek.saturday and dow != dayofweek.sunday
+            break
+    found
+
+newsNext = newsMode != "Off" and f_newsAhead()
+
+// ───────────────────────── Indicators & signals ─────────────────────────
+emaF = ta.ema(close, fastLen)
+emaS = ta.ema(close, slowLen)
+atr  = ta.atr(atrLen)
+
+upTrend  = emaF > emaS
+dnTrend  = emaF < emaS
+longSig  = upTrend and close > emaF
+shortSig = allowShorts and dnTrend and close < emaF
+
+stopDist = atr * initAtr
+qtyRaw   = stopDist > 0 ? math.min(strategy.equity * riskPct / 100.0 / stopDist, strategy.equity * maxLev / close) : 0.0
+qty      = math.floor(qtyRaw / qtyStep) * qtyStep
+
+// ───────────────────────── Alert payloads ─────────────────────────
+f_core(string action) =>
+    '"action":"' + action + '","symbol":"' + symbolOut + '","ref_price":' + str.tostring(close, "#.###") + ',"tf":"' + timeframe.period + '","bar_time":' + str.tostring(time, "#")
+
+f_entryMsg(string action, float q, float sd) =>
+    '{' + f_core(action) + ',"qty":' + str.tostring(q) + ',"sl_dist":' + str.tostring(sd, "#.###") + ',"tp_dist":0}'
+
+f_closeMsg(string action, string reason) =>
+    '{' + f_core(action) + ',"reason":"' + reason + '"}'
+
+// ───────────────────────── Position management (on bar close) ─────────────────────────
+var float stopLvl = na
+var float extreme = na
+
+if strategy.position_size > 0
+    extreme := na(extreme) ? high : math.max(extreme, high)
+    stopLvl := math.max(stopLvl, extreme - trailAtr * atr)
+else if strategy.position_size < 0
+    extreme := na(extreme) ? low : math.min(extreme, low)
+    stopLvl := math.min(stopLvl, extreme + trailAtr * atr)
+else
+    extreme := na
+
+if newsNext and newsMode == "Tighten stop"
+    if strategy.position_size > 0
+        stopLvl := math.max(stopLvl, close - tightenAtr * atr)
+    else if strategy.position_size < 0
+        stopLvl := math.min(stopLvl, close + tightenAtr * atr)
+
+flat = strategy.position_size == 0
+if flat and qty >= qtyStep and longSig and not newsNext
+    stopLvl := close - stopDist
+    strategy.entry("L", strategy.long, qty=qty, alert_message=f_entryMsg("buy", qty, stopDist))
+else if flat and qty >= qtyStep and shortSig and not newsNext
+    stopLvl := close + stopDist
+    strategy.entry("S", strategy.short, qty=qty, alert_message=f_entryMsg("sell", qty, stopDist))
+
+if not na(stopLvl)
+    strategy.exit("L-x", from_entry="L", stop=stopLvl, alert_message=f_closeMsg("close_long", "trailing_stop"))
+    strategy.exit("S-x", from_entry="S", stop=stopLvl, alert_message=f_closeMsg("close_short", "trailing_stop"))
+
+if strategy.position_size > 0 and dnTrend
+    strategy.close("L", comment="trend", alert_message=f_closeMsg("close_long", "trend"))
+if strategy.position_size < 0 and upTrend
+    strategy.close("S", comment="trend", alert_message=f_closeMsg("close_short", "trend"))
+if newsNext and newsMode == "Go flat" and strategy.position_size != 0
+    strategy.close_all(comment="news", alert_message=f_closeMsg("close_all", "news"))
+
+// Tell the bridge to move the broker-side stop (tighten-only is enforced by the bridge).
+if stopSecret != "" and strategy.position_size != 0 and stopLvl != stopLvl[1]
+    alert('{"secret":"' + stopSecret + '","signal":{' + f_core("update_stop") + ',"stop":' + str.tostring(stopLvl, "#.###") + '}}', alert.freq_once_per_bar_close)
+
+// ───────────────────────── Visuals ─────────────────────────
+plot(emaF, "Fast EMA", color=color.new(color.aqua, 0))
+plot(emaS, "Slow EMA", color=color.new(color.gray, 0), linewidth=2)
+plot(strategy.position_size != 0 ? stopLvl : na, "Trailing stop", color=color.new(color.red, 0), style=plot.style_linebr)
+bgcolor(upTrend ? color.new(color.green, 94) : color.new(color.red, 96), title="Trend")
+plotshape(newsNext, "High-impact news next session", shape.diamond, location.top, color.new(color.orange, 0), size=size.tiny)
