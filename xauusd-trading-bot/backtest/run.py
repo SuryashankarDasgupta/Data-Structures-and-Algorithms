@@ -24,7 +24,7 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     if args.synthetic:
-        df = synthetic_xauusd()
+        df = synthetic_xauusd(bars=4000, freq="1D")
         print("WARNING: synthetic data, results say nothing about real gold markets\n")
     elif args.csv:
         df = load_csv(args.csv)

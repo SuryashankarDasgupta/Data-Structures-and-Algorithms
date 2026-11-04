@@ -1,10 +1,11 @@
-"""Bar-by-bar simulation of the XAUUSD Trend Pullback strategy.
+"""Bar-by-bar simulation of pine/xauusd_daily_trend.pine.
 
-Fill model (matches TradingView's default broker emulator closely):
-  * signals are evaluated on bar close, market orders fill at the next bar's open
-  * stop/target are measured from the fill price; they can trigger on the fill bar
-  * if both stop and target lie inside one bar, the intrabar path is assumed to visit the
-    extreme closer to the open first (TradingView's rule); gaps through a level fill at the open
+Fill model (mirrors TradingView's broker emulator):
+  * signals are evaluated on bar close; market orders fill at the next bar's open
+  * the initial stop is set from the signal bar's close (exactly like the Pine script) and is
+    active on the fill bar; afterwards it trails at  highest-high-since-entry - trail_atr x ATR
+    (lowest-low + ... for shorts) and never loosens
+  * a bar that opens through the stop fills at the open, otherwise at the stop price
   * spread/commission is charged per ounce per side
 """
 from __future__ import annotations
@@ -20,34 +21,26 @@ from . import indicators as ind
 
 @dataclass
 class Params:
-    fast_len: int = 21
-    slow_len: int = 50
-    trend_len: int = 200
-    adx_len: int = 14
-    adx_min: float = 20.0
-    risk_pct: float = 0.5
+    fast_len: int = 20
+    slow_len: int = 200
+    allow_shorts: bool = False
     atr_len: int = 14
-    sl_atr: float = 1.5
-    rr: float = 2.0
-    max_units: int = 100
-    max_day_loss_pct: float = 2.0
-    max_day_orders: int = 6
-    use_session: bool = True
-    session_start_hour: int = 7      # UTC, inclusive
-    session_end_hour: int = 20       # UTC, exclusive
-    flat_friday: bool = True
-    initial_capital: float = 10_000.0
+    init_atr: float = 2.0
+    trail_atr: float = 2.5
+    risk_pct: float = 1.0
+    max_lev: float = 1.0
+    qty_step: float = 1.0
+    initial_capital: float = 25_000.0
     commission_per_unit: float = 0.15
 
 
 @dataclass
 class Trade:
     side: int
-    units: int
+    units: float
     entry_time: pd.Timestamp
     entry_price: float
-    stop: float
-    target: float
+    initial_stop: float
     risk_cash: float
     exit_time: Optional[pd.Timestamp] = None
     exit_price: Optional[float] = None
@@ -63,12 +56,12 @@ class Trade:
 class Result:
     trades: list[Trade]
     equity: pd.Series
+    stops: pd.Series
     params: Params
     stats: dict = field(default_factory=dict)
 
     def trades_frame(self) -> pd.DataFrame:
-        rows = [{**asdict(t), "r_multiple": t.r_multiple} for t in self.trades]
-        return pd.DataFrame(rows)
+        return pd.DataFrame([{**asdict(t), "r_multiple": t.r_multiple} for t in self.trades])
 
 
 def load_csv(path: str) -> pd.DataFrame:
@@ -87,151 +80,116 @@ def load_csv(path: str) -> pd.DataFrame:
         idx = pd.to_datetime(t, utc=True)
     out = df[["open", "high", "low", "close"]].astype(float)
     out.index = pd.DatetimeIndex(idx, name="time")
-    return out.sort_index()
+    out = out[(out.high >= out.low) & (out.open > 0)]
+    return out[~out.index.duplicated(keep="last")].sort_index()
 
 
 def compute_signals(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     d = df.copy()
     d["ema_f"] = ind.ema(d["close"], p.fast_len)
     d["ema_s"] = ind.ema(d["close"], p.slow_len)
-    d["ema_t"] = ind.ema(d["close"], p.trend_len)
     d["atr"] = ind.atr(d, p.atr_len)
-    d["adx"] = ind.adx(d, p.adx_len, p.adx_len)
-
-    up = (d.close > d.ema_t) & (d.ema_f > d.ema_s) & (d.ema_s > d.ema_t)
-    dn = (d.close < d.ema_t) & (d.ema_f < d.ema_s) & (d.ema_s < d.ema_t)
-    strong = d.adx >= p.adx_min
-    d["long_sig"] = up & strong & (d.low <= d.ema_f) & (d.close > d.ema_f) & (d.close > d.open)
-    d["short_sig"] = dn & strong & (d.high >= d.ema_f) & (d.close < d.ema_f) & (d.close < d.open)
-
-    hours = d.index.hour
-    in_window = (hours >= p.session_start_hour) & (hours < p.session_end_hour)
-    d["in_session"] = in_window if p.use_session else True
-    d["friday_cut"] = ((d.index.dayofweek == 4) & (hours >= 20)) if p.flat_friday else False
-    d["cross_dn_trend"] = (d.close < d.ema_t) & (d.close.shift() >= d.ema_t.shift())
-    d["cross_up_trend"] = (d.close > d.ema_t) & (d.close.shift() <= d.ema_t.shift())
-
-    warmup = max(p.trend_len, p.atr_len, 2 * p.adx_len)
+    d["up"] = d.ema_f > d.ema_s
+    d["dn"] = d.ema_f < d.ema_s
+    d["long_sig"] = d.up & (d.close > d.ema_f)
+    d["short_sig"] = (d.dn & (d.close < d.ema_f)) if p.allow_shorts else False
+    warmup = max(p.slow_len, p.atr_len)
     d.iloc[:warmup, d.columns.get_indexer(["long_sig", "short_sig"])] = False
     return d
 
 
-def _intrabar_exit(side: int, o: float, h: float, low: float, stop: float, target: float):
-    """Return (price, reason) if stop/target is hit within this bar, else None."""
+def _stop_fill(side: int, o: float, h: float, low: float, stop: float) -> Optional[float]:
+    """Price at which a stop order fills within this bar, or None."""
     if side > 0:
         if o <= stop:
-            return o, "stop"
-        if o >= target:
-            return o, "target"
-        hit_s, hit_t = low <= stop, h >= target
-    else:
-        if o >= stop:
-            return o, "stop"
-        if o <= target:
-            return o, "target"
-        hit_s, hit_t = h >= stop, low <= target
-    if hit_s and hit_t:
-        high_first = abs(h - o) < abs(o - low)
-        # long: high first -> target first; short: high first -> stop first
-        if side > 0:
-            return (target, "target") if high_first else (stop, "stop")
-        return (stop, "stop") if high_first else (target, "target")
-    if hit_s:
-        return stop, "stop"
-    if hit_t:
-        return target, "target"
-    return None
+            return o
+        return stop if low <= stop else None
+    if o >= stop:
+        return o
+    return stop if h >= stop else None
 
 
 def run(df: pd.DataFrame, p: Params | None = None) -> Result:
     p = p or Params()
     d = compute_signals(df, p)
-    O, H, L, C = (d[c].to_numpy() for c in ("open", "high", "low", "close"))
+    O, H, L, C, A = (d[c].to_numpy(dtype=float) for c in ("open", "high", "low", "close", "atr"))
+    up, dn = d["up"].to_numpy(), d["dn"].to_numpy()
+    long_sig, short_sig = d["long_sig"].to_numpy(dtype=bool), d["short_sig"].to_numpy(dtype=bool)
     times = d.index
-    days = times.normalize()
+    n = len(d)
 
     cash = p.initial_capital
+    fee = p.commission_per_unit
     trades: list[Trade] = []
     pos: Optional[Trade] = None
-    pending_entry: Optional[tuple[int, int, float]] = None   # side, units, stop distance
+    stop = np.nan
+    extreme = np.nan
+    pending_entry: Optional[tuple[int, float, float]] = None   # side, units, stop distance
     pending_close: Optional[str] = None
-    equity = np.empty(len(d))
-
-    cur_day = None
-    day_start_eq = cash
-    day_orders = 0
-    halted = False
+    equity = np.empty(n)
+    stops = np.full(n, np.nan)
 
     def close_pos(i: int, price: float, reason: str) -> None:
-        nonlocal pos, cash, day_orders
-        assert pos is not None
-        pnl = (price - pos.entry_price) * pos.side * pos.units - p.commission_per_unit * pos.units
+        nonlocal pos, cash
+        pnl = (price - pos.entry_price) * pos.side * pos.units - fee * pos.units
         cash += pnl
         pos.exit_time, pos.exit_price, pos.exit_reason = times[i], price, reason
         pos.pnl += pnl
         trades.append(pos)
         pos = None
-        day_orders += 1
 
-    for i in range(len(d)):
-        if days[i] != cur_day:
-            cur_day, halted, day_orders = days[i], False, 0
-            day_start_eq = cash + (((C[i - 1] - pos.entry_price) * pos.side * pos.units) if pos and i else 0)
-
-        # 1) orders queued at previous close fill at this open
+    for i in range(n):
+        # 1) market orders queued at the previous close fill at this open
         if pending_close and pos is not None:
             close_pos(i, O[i], pending_close)
         pending_close = None
-        if pending_entry and pos is None and not halted:
+        if pending_entry and pos is None:
             side, units, sd = pending_entry
-            fill = O[i]
-            pos = Trade(side, units, times[i], fill, fill - side * sd, fill + side * sd * p.rr,
-                        risk_cash=units * sd)
-            pos.pnl = -p.commission_per_unit * units
-            cash -= p.commission_per_unit * units
-            day_orders += 1
+            pos = Trade(side, units, times[i], O[i], stop, risk_cash=units * sd, pnl=-fee * units)
+            cash -= fee * units
         pending_entry = None
 
-        # 2) intrabar stop / target
+        # 2) stop order (active on the fill bar too)
         if pos is not None:
-            hit = _intrabar_exit(pos.side, O[i], H[i], L[i], pos.stop, pos.target)
-            if hit:
-                close_pos(i, *hit)
+            px = _stop_fill(pos.side, O[i], H[i], L[i], stop)
+            if px is not None:
+                close_pos(i, px, "trailing_stop" if stop != pos.initial_stop else "initial_stop")
 
-        # 3) bar-close bookkeeping and risk guards
+        # 3) bar close: trail the stop
+        if pos is not None:
+            if pos.side > 0:
+                extreme = H[i] if np.isnan(extreme) else max(extreme, H[i])
+                stop = max(stop, extreme - p.trail_atr * A[i])
+            else:
+                extreme = L[i] if np.isnan(extreme) else min(extreme, L[i])
+                stop = min(stop, extreme + p.trail_atr * A[i])
+            stops[i] = stop
+        else:
+            extreme = np.nan
+
         open_pnl = (C[i] - pos.entry_price) * pos.side * pos.units if pos else 0.0
         equity[i] = cash + open_pnl
-        if not halted and day_start_eq > 0 and \
-                (day_start_eq - equity[i]) / day_start_eq * 100 >= p.max_day_loss_pct:
-            halted = True
-            if pos is not None:
-                pending_close = "day_loss_halt"
-        if day_orders >= p.max_day_orders:
-            halted = True
 
-        # 4) exit rules evaluated on close
-        row = d.iloc[i]
-        if pos is not None and pending_close is None:
-            if pos.side > 0 and row.cross_dn_trend:
-                pending_close = "trend"
-            elif pos.side < 0 and row.cross_up_trend:
-                pending_close = "trend"
-            elif row.friday_cut:
-                pending_close = "weekend"
+        # 4) trend exit -> next open
+        if pos is not None and ((pos.side > 0 and dn[i]) or (pos.side < 0 and up[i])):
+            pending_close = "trend"
 
-        # 5) entries evaluated on close (only when flat)
-        if pos is None and not halted and row.in_session and not row.friday_cut and \
-                (row.long_sig or row.short_sig) and row.atr > 0:
-            sd = row.atr * p.sl_atr
-            units = int(min(p.max_units, np.floor(equity[i] * p.risk_pct / 100 / sd)))
-            if units >= 1:
-                pending_entry = (1 if row.long_sig else -1, units, sd)
+        # 5) entry when flat
+        if pos is None and (long_sig[i] or short_sig[i]) and A[i] > 0:
+            sd = A[i] * p.init_atr
+            raw = min(equity[i] * p.risk_pct / 100 / sd, equity[i] * p.max_lev / C[i])
+            units = np.floor(raw / p.qty_step + 1e-9) * p.qty_step
+            if units >= p.qty_step:
+                side = 1 if long_sig[i] else -1
+                stop = C[i] - side * sd
+                pending_entry = (side, float(units), sd)
 
     if pos is not None:   # mark open trade out at the last close for reporting
-        close_pos(len(d) - 1, C[-1], "end_of_data")
+        close_pos(n - 1, C[-1], "end_of_data")
         equity[-1] = cash
 
-    res = Result(trades, pd.Series(equity, index=times, name="equity"), p)
+    res = Result(trades, pd.Series(equity, index=times, name="equity"),
+                 pd.Series(stops, index=times, name="stop"), p)
     res.stats = compute_stats(res)
     return res
 
@@ -241,21 +199,31 @@ def compute_stats(res: Result) -> dict:
     p = res.params
     pnls = np.array([t.pnl for t in res.trades])
     wins, losses = pnls[pnls > 0], pnls[pnls <= 0]
-    peak = eq.cummax()
-    dd = ((eq - peak) / peak).min() if len(eq) else 0.0
+    dd = float((eq / eq.cummax() - 1).min()) if len(eq) else 0.0
+    years = max((eq.index[-1] - eq.index[0]).days / 365.25, 1e-9) if len(eq) else 1.0
+    final = float(eq.iloc[-1]) if len(eq) else p.initial_capital
+    cagr = (final / p.initial_capital) ** (1 / years) - 1 if final > 0 else -1.0
     daily = eq.resample("1D").last().dropna().pct_change().dropna()
     sharpe = float(daily.mean() / daily.std() * np.sqrt(252)) if len(daily) > 1 and daily.std() > 0 else 0.0
+    in_mkt = sum(((t.exit_time - t.entry_time).days for t in res.trades), 0) / max(years * 365.25, 1)
+    if losses.sum() < 0:
+        pf = round(float(wins.sum() / -losses.sum()), 2)
+    else:
+        pf = float("inf") if len(wins) else 0.0
     return {
-        "start": str(eq.index[0]) if len(eq) else "",
-        "end": str(eq.index[-1]) if len(eq) else "",
+        "start": str(eq.index[0].date()) if len(eq) else "",
+        "end": str(eq.index[-1].date()) if len(eq) else "",
         "initial_capital": p.initial_capital,
-        "final_equity": round(float(eq.iloc[-1]), 2) if len(eq) else p.initial_capital,
+        "final_equity": round(final, 2),
         "net_profit": round(float(pnls.sum()), 2),
         "return_pct": round(float(pnls.sum()) / p.initial_capital * 100, 2),
+        "cagr_pct": round(cagr * 100, 2),
+        "max_drawdown_pct": round(dd * 100, 2),
+        "return_to_drawdown": round(cagr / abs(dd), 2) if dd < 0 else float("inf"),
         "trades": int(len(pnls)),
         "win_rate_pct": round(len(wins) / len(pnls) * 100, 1) if len(pnls) else 0.0,
-        "profit_factor": round(float(wins.sum() / -losses.sum()), 2) if losses.sum() < 0 else float("inf") if len(wins) else 0.0,
+        "profit_factor": pf,
         "avg_r": round(float(np.mean([t.r_multiple for t in res.trades])), 2) if res.trades else 0.0,
-        "max_drawdown_pct": round(float(dd) * 100, 2),
+        "time_in_market_pct": round(in_mkt * 100, 1),
         "sharpe_daily": round(sharpe, 2),
     }

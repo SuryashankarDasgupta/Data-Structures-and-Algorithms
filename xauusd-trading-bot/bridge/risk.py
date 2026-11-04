@@ -44,6 +44,7 @@ class RiskManager:
         units = min(sig.qty, self.cfg.max_units)
         max_risk_cash = balance * self.cfg.max_risk_pct / 100
         units = min(units, int(max_risk_cash // sig.sl_dist))
+        units = min(units, int(balance * self.cfg.max_leverage // sig.ref_price))
         if units < 1:
             return RiskDecision(False, reason="position size below 1 oz after risk caps")
         note = "" if units == sig.qty else f"qty capped {sig.qty}->{units}"

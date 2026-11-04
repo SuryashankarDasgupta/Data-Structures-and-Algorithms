@@ -1,0 +1,110 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// XAUUSD Daily Trend: long-only (shorts optional) trend following with a chandelier trailing stop.
+//
+// Why this design (see README "Research"): on 26 years of gold data (2000-2026), slow daily trend
+// following was the only approach that stayed profitable on data it was NOT tuned on. All 80
+// parameter combinations tested were profitable in 2016-2026. Hourly pullback, London-breakout
+// and overnight-session ideas all failed out of sample.
+//
+// Rules  (use on a DAILY chart, e.g. OANDA:XAUUSD 1D)
+//   Entry : EMA(fast) > EMA(slow) and close > EMA(fast)  -> buy next open
+//   Stop  : signal close - initATR x ATR, then trailed up to (highest high since entry - trailATR x ATR)
+//   Exit  : trailing stop hit, or EMA(fast) falls below EMA(slow) (exit next open)
+//   Size  : equity x risk% / (initATR x ATR), capped at maxLev x equity notional, rounded down to qty step
+//
+// Webhook alert setup (see README):
+//   Condition : this strategy -> "Order fills and alert() function calls"
+//   Message   : {"secret":"<YOUR_SECRET>","price":{{strategy.order.price}},"signal":{{strategy.order.alert_message}}}
+//   Optional  : set "Secret for stop-update alerts" so the bridge can trail the broker-side stop too.
+//
+// Educational tool. Not financial advice. Backtest and paper trade before risking money.
+
+//@version=5
+// Spread (~0.30 USD/oz round trip) is modelled as a 0.15 USD per-oz commission on each side.
+strategy("XAUUSD Daily Trend (risk-managed)", shorttitle="XAU Trend", overlay=true,
+     initial_capital=25000, currency=currency.USD,
+     default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.15,
+     slippage=0, pyramiding=0, margin_long=5, margin_short=5)
+
+// ───────────────────────── Inputs ─────────────────────────
+grpT = "Trend"
+fastLen     = input.int(20,  "Fast EMA",  minval=2,  group=grpT)
+slowLen     = input.int(200, "Slow EMA",  minval=10, group=grpT)
+allowShorts = input.bool(false, "Allow shorts (worse historically on gold)", group=grpT)
+
+grpR = "Risk"
+riskPct  = input.float(1.0, "Risk per trade (% equity)", minval=0.1, maxval=3.0, step=0.1, group=grpR, tooltip="Return and drawdown scale together. ~1% gave ~-8% max drawdown 2000-2026; ~2% gave ~-16%.")
+atrLen   = input.int(14, "ATR length", minval=2, group=grpR)
+initAtr  = input.float(2.0, "Initial stop (x ATR)", minval=0.5, step=0.1, group=grpR)
+trailAtr = input.float(2.5, "Trailing stop (x ATR)", minval=0.5, step=0.1, group=grpR)
+maxLev   = input.float(1.0, "Max notional (x equity)", minval=0.1, step=0.1, group=grpR)
+qtyStep  = input.float(1.0, "Quantity step (oz)", minval=0.01, group=grpR, tooltip="1 = whole ounces (0.01 lot on most CFD brokers). Use smaller only if your broker allows it.")
+
+grpA = "Alerts"
+symbolOut  = input.string("XAUUSD", "Symbol sent in alerts", group=grpA)
+stopSecret = input.string("", "Secret for stop-update alerts (optional)", group=grpA, tooltip="If set, an alert() is sent at each daily close when the trailing stop moves, so the bridge can move the broker-side stop. Keep the script private if you use this.")
+
+// ───────────────────────── Indicators & signals ─────────────────────────
+emaF = ta.ema(close, fastLen)
+emaS = ta.ema(close, slowLen)
+atr  = ta.atr(atrLen)
+
+upTrend  = emaF > emaS
+dnTrend  = emaF < emaS
+longSig  = upTrend and close > emaF
+shortSig = allowShorts and dnTrend and close < emaF
+
+stopDist = atr * initAtr
+qtyRaw   = stopDist > 0 ? math.min(strategy.equity * riskPct / 100.0 / stopDist, strategy.equity * maxLev / close) : 0.0
+qty      = math.floor(qtyRaw / qtyStep) * qtyStep
+
+// ───────────────────────── Alert payloads ─────────────────────────
+f_core(string action) =>
+    '"action":"' + action + '","symbol":"' + symbolOut + '","ref_price":' + str.tostring(close, "#.###") + ',"tf":"' + timeframe.period + '","bar_time":' + str.tostring(time, "#")
+
+f_entryMsg(string action, float q, float sd) =>
+    '{' + f_core(action) + ',"qty":' + str.tostring(q) + ',"sl_dist":' + str.tostring(sd, "#.###") + ',"tp_dist":0}'
+
+f_closeMsg(string action, string reason) =>
+    '{' + f_core(action) + ',"reason":"' + reason + '"}'
+
+// ───────────────────────── Position management (on bar close) ─────────────────────────
+var float stopLvl = na
+var float extreme = na
+
+if strategy.position_size > 0
+    extreme := na(extreme) ? high : math.max(extreme, high)
+    stopLvl := math.max(stopLvl, extreme - trailAtr * atr)
+else if strategy.position_size < 0
+    extreme := na(extreme) ? low : math.min(extreme, low)
+    stopLvl := math.min(stopLvl, extreme + trailAtr * atr)
+else
+    extreme := na
+
+flat = strategy.position_size == 0
+if flat and qty >= qtyStep and longSig
+    stopLvl := close - stopDist
+    strategy.entry("L", strategy.long, qty=qty, alert_message=f_entryMsg("buy", qty, stopDist))
+else if flat and qty >= qtyStep and shortSig
+    stopLvl := close + stopDist
+    strategy.entry("S", strategy.short, qty=qty, alert_message=f_entryMsg("sell", qty, stopDist))
+
+if not na(stopLvl)
+    strategy.exit("L-x", from_entry="L", stop=stopLvl, alert_message=f_closeMsg("close_long", "trailing_stop"))
+    strategy.exit("S-x", from_entry="S", stop=stopLvl, alert_message=f_closeMsg("close_short", "trailing_stop"))
+
+if strategy.position_size > 0 and dnTrend
+    strategy.close("L", comment="trend", alert_message=f_closeMsg("close_long", "trend"))
+if strategy.position_size < 0 and upTrend
+    strategy.close("S", comment="trend", alert_message=f_closeMsg("close_short", "trend"))
+
+// Tell the bridge to move the broker-side stop (tighten-only is enforced by the bridge).
+if stopSecret != "" and strategy.position_size != 0 and stopLvl != stopLvl[1]
+    alert('{"secret":"' + stopSecret + '","signal":{' + f_core("update_stop") + ',"stop":' + str.tostring(stopLvl, "#.###") + '}}', alert.freq_once_per_bar_close)
+
+// ───────────────────────── Visuals ─────────────────────────
+plot(emaF, "Fast EMA", color=color.new(color.aqua, 0))
+plot(emaS, "Slow EMA", color=color.new(color.gray, 0), linewidth=2)
+plot(strategy.position_size != 0 ? stopLvl : na, "Trailing stop", color=color.new(color.red, 0), style=plot.style_linebr)
+bgcolor(upTrend ? color.new(color.green, 94) : color.new(color.red, 96), title="Trend")

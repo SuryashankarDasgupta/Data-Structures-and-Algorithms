@@ -32,10 +32,16 @@ def close(action="close_long", price=4020.0, bar=BAR_1H, reason="sl_tp"):
                        "ref_price": price, "tf": "60", "bar_time": bar}}
 
 
+def stop_update(stop, ref=4002.0, bar=BAR_1H):
+    return {"secret": SECRET,
+            "signal": {"action": "update_stop", "symbol": "XAUUSD", "stop": stop,
+                       "ref_price": ref, "tf": "60", "bar_time": bar}}
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0,
+        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0, max_leverage=100.0,
                           kill_switch_file=os.path.join(self.tmp.name, "KILL"))
         self.broker = PaperBroker(10_000, spread=0.0)
         self.journal = Journal()
@@ -104,16 +110,42 @@ class EngineTests(Base):
         self.assertEqual(self.engine.handle(p).status, "rejected")
 
     def test_qty_capped_by_risk(self):
-        # 1% of 10k = 100 USD risk; sl 10 -> max 10 oz even if alert asks for 50
+        # 1.5% of 10k = 150 USD risk; sl 10 -> max 15 oz even if alert asks for 50
         r = self.engine.handle(entry(qty=50))
         self.assertEqual(r.status, "accepted")
-        self.assertEqual(self.broker.position("XAUUSD").units, 10)
+        self.assertEqual(self.broker.position("XAUUSD").units, 15)
         self.assertIn("capped", r.detail)
 
     def test_qty_capped_by_max_units(self):
         self.cfg.max_units = 3
         self.engine.handle(entry(qty=5, sl=1.0))
         self.assertEqual(self.broker.position("XAUUSD").units, 3)
+
+    def test_qty_capped_by_leverage(self):
+        self.cfg.max_leverage = 1.0          # 10k balance / 4000 price -> 2 oz max notional
+        self.engine.handle(entry(qty=10, sl=1.0))
+        self.assertEqual(self.broker.position("XAUUSD").units, 2)
+
+    def test_entry_without_take_profit(self):
+        self.engine.handle(entry(tp=0))
+        self.assertIsNone(self.broker.position("XAUUSD").take_profit)
+
+    def test_update_stop_tightens_only(self):
+        self.engine.handle(entry())                       # stop 3990
+        ok = self.engine.handle(stop_update(3995.0, bar=BAR_1H + 1))
+        self.assertEqual(ok.status, "accepted", ok.detail)
+        self.assertEqual(self.broker.position("XAUUSD").stop_loss, 3995.0)
+        loosen = self.engine.handle(stop_update(3980.0, bar=BAR_1H + 2))
+        self.assertEqual(loosen.status, "rejected")
+        self.assertEqual(self.broker.position("XAUUSD").stop_loss, 3995.0)
+
+    def test_update_stop_wrong_side_rejected(self):
+        self.engine.handle(entry())
+        r = self.engine.handle(stop_update(4010.0, ref=4005.0, bar=BAR_1H + 1))
+        self.assertEqual(r.status, "rejected")
+
+    def test_update_stop_when_flat_ignored(self):
+        self.assertEqual(self.engine.handle(stop_update(3995.0)).status, "ignored")
 
     def test_second_entry_rejected_while_open(self):
         self.engine.handle(entry())
@@ -216,11 +248,16 @@ class FakeSession:
 
     def get(self, url, timeout=None):
         self.calls.append(("GET", url, None))
+        if url.endswith("/openTrades"):
+            return FakeResp(200, {"trades": [{"id": "7", "instrument": "XAU_USD", "currentUnits": "5",
+                                              "stopLossOrder": {"price": "3980.000"}}]})
         return FakeResp(200, {"position": {"long": {"units": self.position_units, "averagePrice": "4000.5"},
                                            "short": {"units": "0"}}})
 
     def put(self, url, json=None, timeout=None):
         self.calls.append(("PUT", url, json))
+        if "/trades/" in url:
+            return FakeResp(200, {"stopLossOrderTransaction": {"id": "50"}})
         return FakeResp(200, {"longOrderFillTransaction": {"id": "43", "price": "4010", "units": "-5", "pl": "47.5"}})
 
 
@@ -249,6 +286,18 @@ class OandaTests(unittest.TestCase):
         f = self.b.open_market("XAUUSD", 1, 5, 4000.0, 12.5, 25.0)
         self.assertEqual(f.status, "unknown")
         self.assertEqual(sum(1 for c in self.s.calls if c[0] == "POST"), 1)
+
+    def test_update_stop_moves_trade_stop(self):
+        f = self.b.update_stop("XAUUSD", 3990.0)
+        self.assertEqual(f.status, "filled")
+        _, url, body = self.s.calls[-1]
+        self.assertTrue(url.endswith("/trades/7/orders"))
+        self.assertEqual(body["stopLoss"]["price"], "3990.000")
+
+    def test_update_stop_refuses_to_loosen(self):
+        f = self.b.update_stop("XAUUSD", 3970.0)
+        self.assertEqual(f.status, "failed")
+        self.assertFalse(any(c[0] == "PUT" for c in self.s.calls))
 
     def test_close_long(self):
         self.s.position_units = "5"

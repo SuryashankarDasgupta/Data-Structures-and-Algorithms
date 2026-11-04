@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 ENTRY_ACTIONS = {"buy", "sell"}
 CLOSE_ACTIONS = {"close_long", "close_short", "close_all"}
+STOP_ACTIONS = {"update_stop"}
 
 
 class SignalError(ValueError):
@@ -25,6 +26,7 @@ class Signal:
     tp_dist: float = 0.0
     fill_price: Optional[float] = None   # {{strategy.order.price}} from TradingView
     reason: str = ""
+    stop: float = 0.0                    # new stop level for update_stop
 
     @property
     def is_entry(self) -> bool:
@@ -79,7 +81,7 @@ def to_signal(envelope: dict[str, Any]) -> Signal:
         raise SignalError("missing 'signal' object (alert message template wrong?)")
 
     action = str(inner.get("action", "")).lower()
-    if action not in ENTRY_ACTIONS | CLOSE_ACTIONS:
+    if action not in ENTRY_ACTIONS | CLOSE_ACTIONS | STOP_ACTIONS:
         raise SignalError(f"unknown action {action!r}")
 
     sig = Signal(
@@ -93,6 +95,7 @@ def to_signal(envelope: dict[str, Any]) -> Signal:
         tp_dist=_num(inner, "tp_dist", required=False, default=0.0),
         fill_price=_num(envelope, "price", required=False),
         reason=str(inner.get("reason", "")),
+        stop=_num(inner, "stop", required=action in STOP_ACTIONS, default=0.0),
     )
     tf_to_seconds(sig.tf)  # validates
     if sig.ref_price <= 0:
@@ -102,4 +105,6 @@ def to_signal(envelope: dict[str, Any]) -> Signal:
             raise SignalError("qty must be >= 1")
         if sig.sl_dist <= 0:
             raise SignalError("entries must carry a positive sl_dist (no unprotected trades)")
+    if action in STOP_ACTIONS and sig.stop <= 0:
+        raise SignalError("update_stop needs a positive stop")
     return sig

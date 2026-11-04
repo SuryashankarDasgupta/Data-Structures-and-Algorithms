@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from backtest import indicators as ind
-from backtest.engine import Params, _intrabar_exit, run
+from backtest.engine import Params, _stop_fill, run
 from backtest.sample_data import synthetic_xauusd
 
 
@@ -22,50 +22,74 @@ class IndicatorTests(unittest.TestCase):
         self.assertTrue(((a >= 0) & (a <= 100)).all())
 
 
-class IntrabarTests(unittest.TestCase):
-    def test_gap_through_stop_fills_at_open(self):
-        self.assertEqual(_intrabar_exit(1, 95, 96, 94, stop=97, target=110), (95, "stop"))
+class StopFillTests(unittest.TestCase):
+    def test_long_gap_through_stop_fills_at_open(self):
+        self.assertEqual(_stop_fill(1, 95, 96, 94, 97), 95)
 
-    def test_both_hit_open_near_high_long_hits_target_first(self):
-        self.assertEqual(_intrabar_exit(1, 104, 106, 90, stop=95, target=105), (105, "target"))
+    def test_long_touch_fills_at_stop(self):
+        self.assertEqual(_stop_fill(1, 100, 101, 96, 97), 97)
 
-    def test_both_hit_open_near_low_long_hits_stop_first(self):
-        self.assertEqual(_intrabar_exit(1, 96, 112, 94, stop=95, target=105), (95, "stop"))
+    def test_long_not_hit(self):
+        self.assertIsNone(_stop_fill(1, 100, 101, 98, 97))
 
-    def test_short_target(self):
-        self.assertEqual(_intrabar_exit(-1, 100, 101, 89, stop=105, target=90), (90, "target"))
+    def test_short(self):
+        self.assertEqual(_stop_fill(-1, 100, 104, 99, 103), 103)
+        self.assertEqual(_stop_fill(-1, 105, 106, 104, 103), 105)
+
+
+def trend_then_crash(n_up=400, n_down=60):
+    """Deterministic series: steady uptrend then a sharp fall."""
+    idx = pd.date_range("2020-01-01", periods=n_up + n_down, freq="1D", tz="UTC")
+    close = np.concatenate([np.linspace(1000, 2000, n_up), np.linspace(2000, 1400, n_down)])
+    open_ = np.concatenate([[close[0]], close[:-1]])
+    return pd.DataFrame({"open": open_, "high": np.maximum(open_, close) + 5,
+                         "low": np.minimum(open_, close) - 5, "close": close}, index=idx)
 
 
 class RunTests(unittest.TestCase):
     def setUp(self):
-        self.df = synthetic_xauusd(3000)
+        self.df = synthetic_xauusd(3000, freq="1D")
 
-    def test_run_produces_consistent_stats(self):
+    def test_stats_consistent(self):
         res = run(self.df)
         st = res.stats
         self.assertGreater(st["trades"], 0)
         self.assertAlmostEqual(st["final_equity"], st["initial_capital"] + st["net_profit"], places=1)
         for t in res.trades:
             self.assertGreaterEqual(t.exit_time, t.entry_time)
-            self.assertLessEqual(t.units, Params().max_units)
+
+    def test_long_only_by_default(self):
+        self.assertTrue(all(t.side == 1 for t in run(self.df).trades))
+        self.assertTrue(any(t.side == -1 for t in run(self.df, Params(allow_shorts=True)).trades))
+
+    def test_trailing_stop_never_loosens(self):
+        res = run(self.df)
+        s = res.stops
+        for t in res.trades:
+            seg = s.loc[t.entry_time:t.exit_time].dropna()
+            self.assertTrue((seg.diff().dropna() >= -1e-9).all())
+
+    def test_quantity_step_and_leverage_cap(self):
+        p = Params(qty_step=1.0, max_lev=0.5, risk_pct=3.0)
+        res = run(self.df, p)
+        for t in res.trades:
+            self.assertEqual(t.units, int(t.units))
+            # notional at entry can't exceed 0.5x equity by more than one bar's gap
+            self.assertLess(t.units * t.entry_price, 0.6 * res.equity.max())
+
+    def test_uptrend_captured_and_crash_exited(self):
+        res = run(trend_then_crash(), Params(slow_len=100, initial_capital=100_000))
+        self.assertGreater(res.stats["net_profit"], 0)
+        last = res.trades[-1]
+        self.assertNotEqual(last.exit_reason, "end_of_data")   # stop got us out of the crash
+        self.assertGreater(last.exit_price, 1400)
 
     def test_risk_per_trade_respected(self):
-        res = run(self.df, Params(risk_pct=0.5))
+        res = run(self.df, Params(risk_pct=1.0))
         for t in res.trades:
-            if t.exit_reason == "stop":
-                # loss on a clean stop should be ~0.5% of equity (+ commission), never > 1%
-                self.assertLess(-t.pnl, 0.01 * 20_000)
-
-    def test_session_toggle_changes_behaviour(self):
-        a = run(self.df, Params(use_session=True)).stats["trades"]
-        b = run(self.df, Params(use_session=False)).stats["trades"]
-        self.assertNotEqual(a, b)
-
-    def test_no_trades_outside_session(self):
-        res = run(self.df, Params(use_session=True, session_start_hour=8, session_end_hour=16))
-        for t in res.trades:
-            # entry fills on the bar after the signal, so allow hour 16
-            self.assertTrue(8 <= (t.entry_time.hour - 1) % 24 < 16)
+            if t.exit_reason == "initial_stop":
+                # loss on a clean stop ~= 1% of equity (+ commission, gaps)
+                self.assertLess(-t.pnl, 0.02 * res.equity.max())
 
 
 if __name__ == "__main__":

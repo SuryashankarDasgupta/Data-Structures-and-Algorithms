@@ -73,6 +73,8 @@ class Engine:
             try:
                 if sig.is_entry:
                     return self._entry(envelope, sig, now)
+                if sig.action == "update_stop":
+                    return self._update_stop(envelope, sig)
                 return self._close(envelope, sig, now)
             except Exception as exc:  # noqa: BLE001 - never crash the server on broker errors
                 log.exception("broker error")
@@ -109,6 +111,22 @@ class Engine:
             detail += f" ({decision.reason})"
         if fill.status == "unknown":
             detail += f" [UNVERIFIED: {fill.message}]"
+        self.journal.log_signal("accepted", detail, envelope, sig.dedupe_key, sig.action)
+        log.info(detail)
+        return Result(200, "accepted", detail)
+
+    def _update_stop(self, envelope, sig: Signal) -> Result:
+        pos = self.broker.position(sig.symbol)
+        if pos is None:
+            self.journal.log_signal("accepted", "no position for stop update", envelope, sig.dedupe_key, sig.action)
+            return Result(200, "ignored", "no open position")
+        # a stop on the wrong side of the market would close immediately; refuse it
+        if (pos.units > 0 and sig.stop >= sig.ref_price) or (pos.units < 0 and sig.stop <= sig.ref_price):
+            return self._reject(envelope, sig, f"stop {sig.stop} is on the wrong side of price {sig.ref_price}")
+        fill = self.broker.update_stop(sig.symbol, sig.stop)
+        if fill.status != "filled":
+            return self._reject(envelope, sig, f"stop not moved: {fill.message}")
+        detail = f"stop moved to {sig.stop}"
         self.journal.log_signal("accepted", detail, envelope, sig.dedupe_key, sig.action)
         log.info(detail)
         return Result(200, "accepted", detail)

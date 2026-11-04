@@ -35,6 +35,14 @@ class Broker(Protocol):
     def open_market(self, symbol: str, side: int, units: int, ref_price: float,
                     sl_dist: float, tp_dist: float) -> Fill: ...
     def close(self, symbol: str, price_hint: Optional[float] = None) -> Fill: ...
+    def update_stop(self, symbol: str, stop: float) -> Fill: ...
+
+
+def tightens(units: int, current: Optional[float], new: float) -> bool:
+    """True if `new` reduces risk versus `current` (higher for longs, lower for shorts)."""
+    if current is None:
+        return True
+    return new > current if units > 0 else new < current
 
 
 # ───────────────────────────── Paper ─────────────────────────────
@@ -88,6 +96,16 @@ class PaperBroker:
         self._positions[symbol] = Position(symbol, side * units, price, sl, tp)
         self._save()
         return Fill("filled", price=price, units=side * units, broker_ref=f"paper-{self._seq}")
+
+    def update_stop(self, symbol, stop) -> Fill:
+        pos = self._positions.get(symbol)
+        if pos is None:
+            return Fill("failed", message="no open position")
+        if not tightens(pos.units, pos.stop_loss, stop):
+            return Fill("failed", message=f"stop {stop} would loosen current stop {pos.stop_loss}")
+        pos.stop_loss = round(stop, 3)
+        self._save()
+        return Fill("filled", price=pos.stop_loss, units=pos.units)
 
     def close(self, symbol, price_hint=None) -> Fill:
         pos = self._positions.get(symbol)
@@ -190,6 +208,28 @@ class OandaBroker:
             return Fill("unknown", price=pos.avg_price, units=pos.units,
                         message=f"{err}; position exists, treating as filled")
         return Fill("failed", message=f"{err}; no position found")
+
+    def update_stop(self, symbol, stop) -> Fill:
+        r = self.http.get(self._url("/openTrades"), timeout=self.timeout)
+        r.raise_for_status()
+        trades = [t for t in r.json().get("trades", []) if t.get("instrument") == self._inst(symbol)]
+        if not trades:
+            return Fill("failed", message="no open trade")
+        done = 0
+        for t in trades:
+            units = int(float(t["currentUnits"]))
+            cur = t.get("stopLossOrder", {}).get("price")
+            if not tightens(units, float(cur) if cur else None, stop):
+                continue
+            body = {"stopLoss": {"price": f"{stop:.3f}", "timeInForce": "GTC"}}
+            resp = self.http.put(self._url(f"/trades/{t['id']}/orders"), json=body, timeout=self.timeout)
+            if resp.status_code >= 400:
+                data = resp.json() if resp.content else {}
+                return Fill("failed", message=data.get("errorMessage", f"HTTP {resp.status_code}"))
+            done += 1
+        if not done:
+            return Fill("failed", message="new stop would loosen existing stop(s)")
+        return Fill("filled", price=stop, units=done)
 
     def close(self, symbol, price_hint=None) -> Fill:
         pos = self.position(symbol)
