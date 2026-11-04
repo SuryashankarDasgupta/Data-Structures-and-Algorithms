@@ -1,0 +1,132 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// XAUUSD Trend-Pullback strategy with built-in risk management and webhook alerts.
+//
+// How it trades
+//   * Trend filter : EMA(fast) > EMA(slow) > EMA(trend) for longs (mirror for shorts)
+//   * Strength     : ADX >= threshold
+//   * Trigger      : price pulls back to EMA(fast) and the bar closes back in trend direction
+//   * Stop         : ATR x multiplier, frozen at signal time
+//   * Target       : stop distance x R multiple
+//   * Position size: (equity x risk %) / stop distance, in ounces (TradingView XAUUSD qty = oz)
+//   * Extra exits  : close crosses EMA(trend) against the position; optional flat before weekend
+//   * Guards       : session filter, max intraday loss, max filled orders per day
+//
+// Webhook alert setup (see README):
+//   Condition : this strategy -> "Order fills only"
+//   Message   : {"secret":"<YOUR_SECRET>","price":{{strategy.order.price}},"signal":{{strategy.order.alert_message}}}
+//
+// Educational tool. Not financial advice. Backtest and paper trade before risking money.
+
+//@version=5
+// Spread (~0.30 USD/oz round trip) is modelled as a 0.15 USD per-oz commission on each side.
+strategy("XAUUSD Trend Pullback (risk-managed)", shorttitle="XAU Pullback", overlay=true,
+     initial_capital=10000, currency=currency.USD,
+     default_qty_type=strategy.fixed, default_qty_value=1,
+     // ~0.30 USD/oz round-trip spread modelled as 0.15 per oz per side
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.15,
+     slippage=0, pyramiding=0, margin_long=5, margin_short=5)
+
+// ───────────────────────── Inputs ─────────────────────────
+grpT = "Trend"
+fastLen  = input.int(21,  "Fast EMA",  minval=2,  group=grpT)
+slowLen  = input.int(50,  "Slow EMA",  minval=3,  group=grpT)
+trendLen = input.int(200, "Trend EMA", minval=10, group=grpT)
+adxLen   = input.int(14,  "ADX length", minval=2, group=grpT)
+adxMin   = input.float(20.0, "Min ADX", minval=0, group=grpT)
+
+grpR = "Risk"
+riskPct        = input.float(0.5, "Risk per trade (% equity)", minval=0.05, maxval=5.0, step=0.05, group=grpR)
+atrLen         = input.int(14, "ATR length", minval=2, group=grpR)
+slAtr          = input.float(1.5, "Stop distance (x ATR)", minval=0.2, step=0.1, group=grpR)
+rr             = input.float(2.0, "Take profit (R multiple)", minval=0.5, step=0.1, group=grpR)
+maxUnits       = input.int(100, "Max position size (oz)", minval=1, group=grpR)
+maxDayLossPct  = input.float(2.0, "Max intraday loss (% equity)", minval=0.1, group=grpR)
+maxDayOrders   = input.int(6, "Max filled orders per day", minval=2, group=grpR)
+
+grpS = "Session"
+useSession = input.bool(true, "Only enter during session", group=grpS)
+sess       = input.session("0700-2000", "Entry session (UTC)", group=grpS)
+flatFriday = input.bool(true, "Go flat Friday from 20:00 UTC", group=grpS)
+
+grpA = "Alerts"
+symbolOut = input.string("XAUUSD", "Symbol sent in alerts", group=grpA)
+
+// ───────────────────────── Built-in risk guards ─────────────────────────
+strategy.risk.max_intraday_loss(maxDayLossPct, strategy.percent_of_equity)
+strategy.risk.max_intraday_filled_orders(maxDayOrders)
+
+// ───────────────────────── Indicators ─────────────────────────
+emaF = ta.ema(close, fastLen)
+emaS = ta.ema(close, slowLen)
+emaT = ta.ema(close, trendLen)
+atr  = ta.atr(atrLen)
+[diPlus, diMinus, adx] = ta.dmi(adxLen, adxLen)
+
+inSession = not useSession or not na(time(timeframe.period, sess, "UTC"))
+fridayCut = flatFriday and dayofweek(time, "UTC") == dayofweek.friday and hour(time, "UTC") >= 20
+
+upTrend = close > emaT and emaF > emaS and emaS > emaT
+dnTrend = close < emaT and emaF < emaS and emaS < emaT
+strong  = adx >= adxMin
+
+crossDnTrend = ta.crossunder(close, emaT)
+crossUpTrend = ta.crossover(close, emaT)
+
+longSig  = upTrend and strong and low  <= emaF and close > emaF and close > open
+shortSig = dnTrend and strong and high >= emaF and close < emaF and close < open
+
+stopDist = atr * slAtr
+riskCash = strategy.equity * riskPct / 100.0
+qtyCalc  = stopDist > 0 ? math.min(maxUnits, math.floor(riskCash / stopDist)) : 0
+
+// ───────────────────────── Alert payloads ─────────────────────────
+f_entryMsg(string action, int q, float sd) =>
+    '{"action":"' + action + '","symbol":"' + symbolOut + '","qty":' + str.tostring(q) +
+     ',"ref_price":' + str.tostring(close, "#.###") +
+     ',"sl_dist":' + str.tostring(sd, "#.###") +
+     ',"tp_dist":' + str.tostring(sd * rr, "#.###") +
+     ',"tf":"' + timeframe.period + '","bar_time":' + str.tostring(time, "#") + '}'
+
+f_closeMsg(string action, string reason) =>
+    '{"action":"' + action + '","symbol":"' + symbolOut + '","reason":"' + reason +
+     '","ref_price":' + str.tostring(close, "#.###") +
+     ',"tf":"' + timeframe.period + '","bar_time":' + str.tostring(time, "#") + '}'
+
+// ───────────────────────── Orders ─────────────────────────
+var float tradeStop = na
+flat     = strategy.position_size == 0
+canEnter = flat and inSession and not fridayCut and qtyCalc >= 1
+
+if canEnter and longSig
+    tradeStop := stopDist
+    strategy.entry("L", strategy.long, qty=qtyCalc, alert_message=f_entryMsg("buy", qtyCalc, stopDist))
+else if canEnter and shortSig
+    tradeStop := stopDist
+    strategy.entry("S", strategy.short, qty=qtyCalc, alert_message=f_entryMsg("sell", qtyCalc, stopDist))
+
+// Stop / target are measured from the actual fill price, using the distance frozen at signal time.
+if not na(tradeStop)
+    lossTicks   = tradeStop / syminfo.mintick
+    profitTicks = tradeStop * rr / syminfo.mintick
+    strategy.exit("L-x", from_entry="L", loss=lossTicks, profit=profitTicks,
+         alert_message=f_closeMsg("close_long", "sl_tp"))
+    strategy.exit("S-x", from_entry="S", loss=lossTicks, profit=profitTicks,
+         alert_message=f_closeMsg("close_short", "sl_tp"))
+
+// Trend invalidation
+if strategy.position_size > 0 and crossDnTrend
+    strategy.close("L", comment="trend", alert_message=f_closeMsg("close_long", "trend"))
+if strategy.position_size < 0 and crossUpTrend
+    strategy.close("S", comment="trend", alert_message=f_closeMsg("close_short", "trend"))
+
+// Weekend flat
+if fridayCut and strategy.position_size != 0
+    strategy.close_all(comment="weekend", alert_message=f_closeMsg("close_all", "weekend"))
+
+// ───────────────────────── Visuals ─────────────────────────
+plot(emaF, "Fast EMA",  color=color.new(color.aqua, 0))
+plot(emaS, "Slow EMA",  color=color.new(color.orange, 0))
+plot(emaT, "Trend EMA", color=color.new(color.gray, 0), linewidth=2)
+plotshape(canEnter and longSig,  "Long signal",  shape.triangleup,   location.belowbar, color.new(color.lime, 0), size=size.tiny)
+plotshape(canEnter and shortSig, "Short signal", shape.triangledown, location.abovebar, color.new(color.red, 0),  size=size.tiny)
+bgcolor(useSession and inSession ? color.new(color.blue, 94) : na, title="Session")
