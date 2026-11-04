@@ -28,11 +28,12 @@ class Result:
 
 class Engine:
     def __init__(self, cfg, broker: Broker, journal: Journal,
-                 clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)):
+                 clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc), news=None):
         self.cfg = cfg
         self.broker = broker
         self.journal = journal
-        self.risk = RiskManager(cfg, journal)
+        self.news = news
+        self.risk = RiskManager(cfg, journal, news)
         self.clock = clock
         self._lock = threading.Lock()   # one order at a time: single writer to the broker
 

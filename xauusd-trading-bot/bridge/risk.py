@@ -16,9 +16,10 @@ class RiskDecision:
 
 
 class RiskManager:
-    def __init__(self, cfg, journal: Journal):
+    def __init__(self, cfg, journal: Journal, news=None):
         self.cfg = cfg
         self.journal = journal
+        self.news = news            # NewsCalendar or None
 
     def day_start_balance(self, day: str, current_balance: float) -> float:
         key = f"day_start_balance:{day}"
@@ -34,6 +35,10 @@ class RiskManager:
             return RiskDecision(False, reason="kill switch active")
         if has_position:
             return RiskDecision(False, reason="position already open")
+        if self.news is not None and self.cfg.news_block_hours > 0:
+            hits = self.news.upcoming(now, self.cfg.news_block_hours, self.cfg.news_block_after_min)
+            if hits:
+                return RiskDecision(False, reason="high-impact news: " + ", ".join(e.label() for e in hits))
         if self.journal.entries_on(day) >= self.cfg.max_trades_per_day:
             return RiskDecision(False, reason="max trades per day reached")
 

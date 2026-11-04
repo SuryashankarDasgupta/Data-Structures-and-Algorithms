@@ -41,6 +41,12 @@ class Config:
     oanda_token: str = ""
     allow_live_trading: str = ""
 
+    # High-impact news guard: reject new entries within this many hours before a release (0 = off)
+    news_block_hours: float = 24.0
+    news_block_after_min: float = 30.0   # ...and for this many minutes after it
+    news_events: tuple[str, ...] = ("FOMC", "NFP", "CPI")
+    news_calendar: str = ""              # empty = bundled data/high_impact_usd.csv
+
     journal_path: str = "journal.sqlite3"
     extra: dict = field(default_factory=dict)
 
@@ -70,6 +76,10 @@ class Config:
             oanda_account_id=_env("OANDA_ACCOUNT_ID", ""),
             oanda_token=_env("OANDA_TOKEN", ""),
             allow_live_trading=_env("ALLOW_LIVE_TRADING", ""),
+            news_block_hours=float(_env("NEWS_BLOCK_HOURS", "24")),
+            news_block_after_min=float(_env("NEWS_BLOCK_AFTER_MIN", "30")),
+            news_events=tup("NEWS_EVENTS", "FOMC,NFP,CPI"),
+            news_calendar=_env("NEWS_CALENDAR", ""),
             journal_path=_env("JOURNAL_PATH", "journal.sqlite3"),
         )
 

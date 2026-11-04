@@ -32,6 +32,13 @@ class Params:
     qty_step: float = 1.0
     initial_capital: float = 25_000.0
     commission_per_unit: float = 0.15
+    # High-impact news handling (needs an events calendar, see backtest/news.py)
+    #   off     : ignore news
+    #   block   : no new entries when a high-impact release falls on the next trading day
+    #   tighten : block + move the stop up to close - news_tighten_atr x ATR before a release
+    #   flat    : block + exit open positions at the close before a release
+    news_mode: str = "block"
+    news_tighten_atr: float = 1.0
 
 
 @dataclass
@@ -109,9 +116,31 @@ def _stop_fill(side: int, o: float, h: float, low: float, stop: float) -> Option
     return stop if h >= stop else None
 
 
-def run(df: pd.DataFrame, p: Params | None = None) -> Result:
+def event_ahead(index: pd.DatetimeIndex, events) -> np.ndarray:
+    """True at bar i if a release falls after bar i's date and on/before the next bar's date
+    (i.e. during the next trading session, weekends included). The last bar looks one weekday ahead."""
+    if not events:
+        return np.zeros(len(index), dtype=bool)
+    ev = np.array(sorted(pd.Timestamp(e).date() for e in events), dtype="datetime64[D]")
+    days = index.tz_convert(None).normalize().to_numpy().astype("datetime64[D]") if index.tz is not None \
+        else index.normalize().to_numpy().astype("datetime64[D]")
+    nxt = np.empty_like(days)
+    nxt[:-1] = days[1:]
+    nxt[-1] = np.busday_offset(days[-1], 1, roll="forward") if len(days) else days[-1:]
+    lo = np.searchsorted(ev, days, side="right")      # first event strictly after today
+    hi = np.searchsorted(ev, nxt, side="right")       # events up to and including next session
+    return hi > lo
+
+
+def run(df: pd.DataFrame, p: Params | None = None, events=None) -> Result:
     p = p or Params()
+    if p.news_mode not in ("off", "block", "tighten", "flat"):
+        raise ValueError(f"unknown news_mode {p.news_mode!r}")
+    if events is None and p.news_mode != "off":
+        from .news import load_events
+        events = load_events()
     d = compute_signals(df, p)
+    news_next = event_ahead(d.index, events) if p.news_mode != "off" else np.zeros(len(d), dtype=bool)
     O, H, L, C, A = (d[c].to_numpy(dtype=float) for c in ("open", "high", "low", "close", "atr"))
     up, dn = d["up"].to_numpy(), d["dn"].to_numpy()
     long_sig, short_sig = d["long_sig"].to_numpy(dtype=bool), d["short_sig"].to_numpy(dtype=bool)
@@ -163,6 +192,9 @@ def run(df: pd.DataFrame, p: Params | None = None) -> Result:
             else:
                 extreme = L[i] if np.isnan(extreme) else min(extreme, L[i])
                 stop = min(stop, extreme + p.trail_atr * A[i])
+            if news_next[i] and p.news_mode == "tighten":
+                stop = max(stop, C[i] - p.news_tighten_atr * A[i]) if pos.side > 0 \
+                    else min(stop, C[i] + p.news_tighten_atr * A[i])
             stops[i] = stop
         else:
             extreme = np.nan
@@ -173,9 +205,11 @@ def run(df: pd.DataFrame, p: Params | None = None) -> Result:
         # 4) trend exit -> next open
         if pos is not None and ((pos.side > 0 and dn[i]) or (pos.side < 0 and up[i])):
             pending_close = "trend"
+        if pos is not None and pending_close is None and news_next[i] and p.news_mode == "flat":
+            pending_close = "news"
 
-        # 5) entry when flat
-        if pos is None and (long_sig[i] or short_sig[i]) and A[i] > 0:
+        # 5) entry when flat (never right before a high-impact release when news filtering is on)
+        if pos is None and not news_next[i] and (long_sig[i] or short_sig[i]) and A[i] > 0:
             sd = A[i] * p.init_atr
             raw = min(equity[i] * p.risk_pct / 100 / sd, equity[i] * p.max_lev / C[i])
             units = np.floor(raw / p.qty_step + 1e-9) * p.qty_step

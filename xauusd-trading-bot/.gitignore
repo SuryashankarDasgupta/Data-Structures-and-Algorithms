@@ -4,3 +4,4 @@ paper_state.json*
 KILL_SWITCH
 __pycache__/
 *.csv
+!data/high_impact_usd.csv

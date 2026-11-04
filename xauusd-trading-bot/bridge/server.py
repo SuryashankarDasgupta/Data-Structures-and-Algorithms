@@ -19,6 +19,7 @@ from .brokers import make_broker
 from .config import Config
 from .engine import Engine
 from .journal import Journal, utc_now
+from .news import DEFAULT_PATH as NEWS_DEFAULT, NewsCalendar
 
 MAX_BODY = 16 * 1024
 log = logging.getLogger("bridge")
@@ -51,6 +52,8 @@ def make_handler(engine: Engine, cfg: Config):
                     "balance": engine.broker.balance(),
                     "position": pos.__dict__ if pos else None,
                     "entries_today": engine.journal.entries_on(day),
+                    "next_news": [e.label() for e in engine.news.next_events(utc_now())] if engine.news else [],
+                    "news_calendar_stale": engine.news.is_stale(utc_now()) if engine.news else None,
                 })
             self._send(404, {"error": "not found"})
 
@@ -75,7 +78,16 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = Config.from_env()
     cfg.validate()
-    engine = Engine(cfg, make_broker(cfg), Journal(cfg.journal_path))
+    news = None
+    if cfg.news_block_hours > 0:
+        news = NewsCalendar.load(cfg.news_calendar or NEWS_DEFAULT, cfg.news_events)
+        if news.is_stale(utc_now()):
+            log.warning("news calendar has no NFP/CPI in the next 3 weeks: run `python -m bridge.news update` "
+                        "or add dates to %s", cfg.news_calendar or NEWS_DEFAULT)
+        nxt = news.next_events(utc_now(), 1)
+        log.info("news guard on (%sh before, %smin after); next: %s", cfg.news_block_hours,
+                 cfg.news_block_after_min, nxt[0].label() if nxt else "none in calendar")
+    engine = Engine(cfg, make_broker(cfg), Journal(cfg.journal_path), news=news)
     srv = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(engine, cfg))
     log.info("listening on %s:%s broker=%s", cfg.host, cfg.port,
              cfg.broker + (f"/{cfg.oanda_env}" if cfg.broker == "oanda" else ""))

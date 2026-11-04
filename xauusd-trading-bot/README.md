@@ -7,9 +7,10 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **Strategy** | `pine/xauusd_daily_trend.pine` | TradingView Pine v5 strategy for the **daily** chart: backtest in Strategy Tester, send webhook alerts |
 | **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
 | **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
-| **Tests** | `tests/` | 45 tests: `python -m unittest discover -s tests -t .` |
+| **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
+| **Tests** | `tests/` | 62 tests: `python -m unittest discover -s tests -t .` |
 
-> **Bottom line:** over 2000–2026 this made **3.7%/yr with a −8.7% worst drawdown** at 1% risk per trade.
+> **Bottom line:** over 2000–2026 this made **3.7%/yr with a −8.8% worst drawdown** at 1% risk per trade.
 > Buying and holding gold made 10.9%/yr but fell **−44%** on the way. The bot earns about **1.7× more return per unit of
 > drawdown**, but it does **not** beat buy-and-hold on raw return. Nothing here turns $70 into $13k.
 
@@ -25,6 +26,7 @@ Use on a **daily** chart (`OANDA:XAUUSD`, 1D).
 * **Trend exit:** EMA20 falls below EMA200 → sell at the next open
 * **Size:** `equity × risk% ÷ (2 × ATR)` ounces, capped at 1× equity notional (no leverage), whole ounces
 * **Shorts:** off by default (they lowered returns and raised drawdown on gold, see below)
+* **High-impact news:** no new entry when an FOMC decision, NFP or CPI release falls on the next trading session (see [News](#high-impact-news))
 
 There is no fixed profit target. Trend following makes its money from a few large winners (win rate ~42%, average
 winner ≈ 2.5× average loser), so cutting winners short hurts.
@@ -69,12 +71,32 @@ did **not** improve results and was left out.
 | Period | Bot annual return | Bot max DD | Profit factor | Trades | Gold annual return | Gold max DD |
 |---|---|---|---|---|---|---|
 | 2000–2015 (tuning) | 4.2% | −7.8% | 1.81 | 169 | 9.2% | −44.4% |
-| 2016–2026 (unseen) | 2.6% | −6.0% | 1.80 | 101 | 13.1% | −26.7% |
-| 2000–2026 | 3.7% | −8.7% | 1.85 | 279 | 10.9% | −44.4% |
+| 2016–2026 (unseen) | 2.6% | −6.2% | 1.84 | 99 | 13.1% | −26.7% |
+| 2000–2026 | 3.7% | −8.8% | 1.87 | 277 | 10.9% | −44.4% |
 
 Year by year (bot % vs gold %): 2013 **−2.0 vs −28**, 2014 −1.6 vs −1, 2015 −1.9 vs −10, 2019 +10.3 vs +19,
 2020 +6.4 vs +25, 2024 +6.8 vs +27, 2025 +11.8 vs +64. The bot keeps losses small in bear years and captures part of
 each bull run. It's in the market about 48% of the time, so idle cash could also earn interest.
+
+### Last 10 years (4 Nov 2016 → 4 Nov 2026), default settings incl. news filter
+
+| | 1% risk (default) | 2% risk | Gold buy & hold |
+|---|---|---|---|
+| $25,000 becomes | **$32,436** (+29.7%) | $41,710 (+66.8%) | ~$78,150 (+212.6%) |
+| Annual return | 2.64% | 5.25% | 12.07% |
+| Max drawdown | **−6.2%** | −12.2% | −26.7% |
+| Trades / win rate | 98 / 39.8% | 98 / 40.8% | – |
+| Profit factor | 1.83 | 1.89 | – |
+| Avg win / avg loss | +$449 / −$162 | +$958 / −$350 | – |
+| Best / worst trade | +$1,846 / −$392 | +$4,671 / −$1,176 | – |
+
+| Year | 2016* | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026* |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Bot (1% risk) | −1.1 | +1.1 | −2.6 | +10.5 | +5.0 | −2.9 | +0.1 | +3.1 | +6.8 | +10.2 | −2.7 |
+| Gold | −11.8 | +13.6 | −2.1 | +18.9 | +24.7 | −3.5 | −0.1 | +13.4 | +27.5 | +64.4 | −6.2 |
+
+\* partial years. The worst losing year was −2.9%. Gold had an exceptional decade, which a trend system with
+small, risk-capped positions captures only partly.
 
 ### The risk dial: you choose the drawdown
 
@@ -83,10 +105,61 @@ Return and drawdown scale together. Pick the drawdown you can live with:
 | Risk per trade | Annual return | Max drawdown (2000–2026) |
 |---|---|---|
 | 0.5% | 1.8% | −4.2% |
-| **1.0% (default)** | **3.7%** | **−8.7%** |
-| 2.0% | 6.4% | −16.5% |
+| **1.0% (default)** | **3.7%** | **−8.8%** |
+| 2.0% | 6.4% | −17.5% |
 
 Expect live drawdowns to be **worse** than any backtest. Settings above 2% aren't recommended.
+
+## High-impact news
+
+Gold reacts most to three scheduled US releases: **FOMC rate decisions** (14:00 New York), **Non-Farm Payrolls**
+and **CPI** (both 08:30 New York). The calendar in `data/high_impact_usd.csv` comes from official sources:
+[federalreserve.gov](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm) meeting calendars (including the
+emergency cuts of 3 and 15 March 2020) and the BLS release archives for
+[NFP](https://www.bls.gov/bls/news-release/empsit.htm) and [CPI](https://www.bls.gov/bls/news-release/cpi.htm).
+It holds 89 FOMC decisions (2016+), 142 NFP and 141 CPI releases (2015+). October 2025 is missing because those
+reports weren't published during the government shutdown.
+
+**How much do they move gold?** (daily bars, Nov 2016 – Nov 2026)
+
+| Day type | Days | Avg close-to-close move | Avg high-low range |
+|---|---|---|---|
+| NFP | 115 | 0.86% | 1.58% |
+| CPI | 111 | 0.74% | 1.48% |
+| FOMC | 74 | 0.54% | 1.67% |
+| No release | 2,207 | 0.75% | 1.33% |
+
+Release days have **10–25% wider intraday ranges** but barely larger daily closes: the spike mostly reverses within
+the day. That matters for stops, much less for a strategy holding for weeks.
+
+**Options** (*News handling* input in Pine, `news_mode` in the backtester):
+
+| Mode | What it does | 10-yr annual return | Max DD | Trades |
+|---|---|---|---|---|
+| Off | ignore news | 2.77% | −6.2% | 100 |
+| **Block entries (default)** | no new entry if a release is on the next session | 2.64% | −6.2% | 98 |
+| Tighten stop | block + raise the stop to close − 1×ATR before a release | 2.75% | −6.5% | 124 |
+| Go flat | block + close positions before every release | 2.14% | −8.1% | 224 |
+
+None of them improves the backtest: stepping aside costs fees and misses moves, and the 2–2.5×ATR stops already
+absorb most news spikes. **Block entries** is the default as cheap insurance (−0.13%/yr, 2 trades in 10 years,
+which is within noise). It protects against what a backtest can't model: spreads widening 5–10× and fills slipping
+right at release time. Choose *Off* if you prefer the best backtest number.
+
+**The bridge** also checks the calendar using exact release times (DST handled) and rejects new entries from
+`NEWS_BLOCK_HOURS` (24) before a release to `NEWS_BLOCK_AFTER_MIN` (30) after it. Closes and stop updates are
+never blocked. `/status` shows the next events and warns if the calendar is stale.
+
+**Keeping the calendar current:**
+
+```bash
+python -m bridge.news            # show next events, warn if no NFP/CPI in the next 3 weeks
+python -m bridge.news update     # add this week's FOMC/NFP/CPI from the ForexFactory feed (optional)
+python -m bridge.news pine       # copy the CSV dates into the Pine script, then re-paste it in TradingView
+```
+
+You can also add rows to the CSV by hand from the Fed and BLS schedules (`date,event,description`), or put
+dates in the Pine input *Extra event dates* (`YYYYMMDD,YYYYMMDD`).
 
 ## 1. Backtest in TradingView
 
@@ -170,5 +243,6 @@ python -m backtest.run --synthetic                            # smoke test only 
 * 26 years is one history. Gold had a long secular bull market, which favours long-only trend following.
   A decade-long sideways market would mean long flat or slightly negative periods (as in 2012–2018).
 * Backtests exclude swap/financing costs on CFDs, which reduce returns on longer holds.
+* The news calendar starts in 2015 (FOMC 2016), so news filtering only affects backtests from then on.
 
 *Educational software. Not financial advice. Leveraged gold trading can lose more than your deposit.*
