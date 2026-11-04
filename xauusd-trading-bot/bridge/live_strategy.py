@@ -1,0 +1,99 @@
+"""The daily trend rules, evaluated on live completed bars. Mirrors backtest/portfolio.py exactly:
+
+  entry : EMA(fast) > EMA(slow) and close > EMA(fast) (mirror for shorts where allowed), no USD news next session
+  stop  : signal close -/+ init_atr x ATR, then trailed at (extreme since the fill bar) -/+ trail_atr x ATR
+  exit  : trend filter flips at a daily close, or the stop is hit
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+
+from backtest import indicators as ind
+from backtest.markets import MarketSpec
+
+
+@dataclass
+class Rules:
+    fast_len: int = 20
+    slow_len: int = 200
+    atr_len: int = 14
+    init_atr: float = 2.0
+    trail_atr: float = 2.5
+
+
+@dataclass
+class PositionState:
+    symbol: str
+    side: int
+    signal_day: str            # ISO date of the bar whose close triggered the entry
+    initial_stop: float
+    last_stop: float
+
+
+@dataclass
+class Decision:
+    action: str                # none | buy | sell | close | update_stop
+    ref_price: float = 0.0
+    sl_dist: float = 0.0
+    stop: float = 0.0
+    reason: str = ""
+
+
+def indicators(bars: pd.DataFrame, r: Rules) -> pd.DataFrame:
+    d = bars.copy()
+    d["ema_f"] = ind.ema(d.close, r.fast_len)
+    d["ema_s"] = ind.ema(d.close, r.slow_len)
+    d["atr"] = ind.atr(d, r.atr_len)
+    return d
+
+
+def _day(ts) -> date:
+    ts = pd.Timestamp(ts)
+    return (ts.tz_convert(None) if ts.tzinfo is not None else ts).date()
+
+
+def trailing_stop(d: pd.DataFrame, st: PositionState, r: Rules) -> float:
+    """Recompute the chandelier stop from the entry: deterministic, so restarts can't lose it."""
+    stop, ext = st.initial_stop, np.nan
+    sig_day = date.fromisoformat(st.signal_day)
+    after = d[[_day(t) > sig_day for t in d.index]]
+    for _, row in after.iterrows():
+        if st.side > 0:
+            ext = row.high if np.isnan(ext) else max(ext, row.high)
+            stop = max(stop, ext - r.trail_atr * row.atr)
+        else:
+            ext = row.low if np.isnan(ext) else min(ext, row.low)
+            stop = min(stop, ext + r.trail_atr * row.atr)
+    return float(stop)
+
+
+def decide(bars: pd.DataFrame, spec: MarketSpec, r: Rules, state: Optional[PositionState],
+           news_next: bool = False) -> Decision:
+    """Decision at the close of the last completed bar."""
+    if len(bars) < max(r.slow_len, r.atr_len) + 1:
+        return Decision("none", reason=f"need {r.slow_len + 1} bars, have {len(bars)}")
+    d = indicators(bars, r)
+    last = d.iloc[-1]
+    up, dn = last.ema_f > last.ema_s, last.ema_f < last.ema_s
+    if state is not None:
+        if (state.side > 0 and dn) or (state.side < 0 and up):
+            return Decision("close", ref_price=float(last.close), reason="trend")
+        stop = trailing_stop(d, state, r)
+        if (state.side > 0 and stop > state.last_stop + 1e-12) or (state.side < 0 and stop < state.last_stop - 1e-12):
+            return Decision("update_stop", ref_price=float(last.close), stop=stop, reason="trailing")
+        return Decision("none", reason="holding")
+    if not last.atr > 0:
+        return Decision("none", reason="no ATR")
+    long_sig = up and last.close > last.ema_f
+    short_sig = spec.allow_shorts and dn and last.close < last.ema_f
+    if not (long_sig or short_sig):
+        return Decision("none", reason="no signal")
+    if news_next and spec.usd_news:
+        return Decision("none", reason="high-impact USD news next session")
+    sd = float(r.init_atr * last.atr)
+    return Decision("buy" if long_sig else "sell", ref_price=float(last.close), sl_dist=sd, reason="trend entry")

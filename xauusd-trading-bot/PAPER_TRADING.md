@@ -53,6 +53,23 @@ TradingView changes them without notice, alerts start failing with 403, so look 
 column after enabling this. Setting `IP_ALLOWLIST` without `TRUSTED_IP_HEADER` rejects everything, and the bridge
 warns about it at startup.
 
+## Option: run the 24/7 multi-market scanner instead of TradingView alerts
+
+The scanner trades gold + BTC + ETH by itself (see README "Multi-market portfolio and 24/7 scanner"). It needs no
+TradingView alerts and no public tunnel, only the bridge running.
+
+1. In `.env`: `SCANNER=on`, `ALLOWED_SYMBOLS=XAUUSD,BTCUSD,ETHUSD`, `RISK_PCT=1.0`, keep `BROKER=paper`.
+   With no OANDA token, gold prices come from Yahoo (`NONFX_FEED=auto` → yahoo, paper only) and crypto from Coinbase.
+2. **Turn off the TradingView alert for XAUUSD** (or remove XAUUSD from `ALLOWED_SYMBOLS`): two sources must
+   not manage the same position.
+3. Start the bridge as usual (`scripts\start_bridge.ps1`). The log shows `scanner started: XAUUSD,BTCUSD,ETHUSD`.
+4. Check it: `scripts\report.ps1 -Status`. The `scanner` block shows the last cycle time and, per market, the last
+   daily bar processed, the open position and its stop, and any data errors.
+5. A one-off test without the server: `.venv\Scripts\python -m bridge.scanner --once`.
+
+The PC must stay on and awake: crypto trades 24/7 and its daily bar closes at 05:30 IST (00:00 UTC). Gold closes
+at 02:30/03:30 IST. If the PC sleeps, decisions happen when it wakes, at worse prices, and a paper stop can be missed.
+
 ## Check on it
 
 ```powershell

@@ -93,6 +93,19 @@ class Engine:
             self._inflight.add(sig.dedupe_key)
         return None, sig
 
+    def submit_internal(self, sig: Signal, source: str = "scanner") -> Result:
+        """Execute a signal generated inside the bridge (the 24/7 scanner): no secret or staleness check,
+        but the same duplicate protection, risk checks, broker execution and journaling as webhooks."""
+        envelope = {"source": source, "signal": {k: v for k, v in sig.__dict__.items()}}
+        if sig.symbol not in self.cfg.allowed_symbols:
+            return self._reject(envelope, sig, f"symbol {sig.symbol} not allowed")
+        with self._inflight_lock:
+            if sig.dedupe_key in self._inflight or self.journal.is_duplicate(sig.dedupe_key):
+                self.journal.log_signal("duplicate", "already processed", envelope, sig.dedupe_key, sig.action)
+                return Result(200, "duplicate", "already processed")
+            self._inflight.add(sig.dedupe_key)
+        return self.execute(envelope, sig)
+
     def release(self, sig: Signal) -> None:
         """Give up a dedupe key reserved by precheck without executing (e.g. the queue was full)."""
         with self._inflight_lock:
@@ -124,8 +137,9 @@ class Engine:
 
     def _entry(self, envelope, sig: Signal, now: datetime) -> Result:
         balance = self.broker.balance()
-        pos = self.broker.position(sig.symbol)
-        decision = self.risk.check_entry(sig, balance, pos is not None, now)
+        positions = self.broker.positions()
+        pos = next((p for p in positions if p.symbol == sig.symbol), None)
+        decision = self.risk.check_entry(sig, balance, pos is not None, now, positions)
         if not decision.allowed:
             return self._reject(envelope, sig, decision.reason)
 
@@ -134,14 +148,14 @@ class Engine:
         action = "open_long" if sig.side > 0 else "open_short"
         sl = tp = None
         if fill.price is not None:
-            sl = round(fill.price - sig.side * sig.sl_dist, 3)
-            tp = round(fill.price + sig.side * sig.tp_dist, 3) if sig.tp_dist else None
+            sl = round(fill.price - sig.side * sig.sl_dist, 6)
+            tp = round(fill.price + sig.side * sig.tp_dist, 6) if sig.tp_dist else None
         self.journal.log_order(sig.symbol, action, fill.units or sig.side * decision.units, fill.price,
                                fill.status, sl, tp, broker_ref=fill.broker_ref, now=now)
         if fill.status == "failed":
             self.journal.log_signal("error", f"order failed: {fill.message}", envelope, None, sig.action)
             return Result(200, "error", f"order failed: {fill.message}")
-        detail = f"{action} {abs(fill.units)} oz @ {fill.price} SL {sl} TP {tp}"
+        detail = f"{sig.symbol} {action} {abs(fill.units):g} @ {fill.price} SL {sl} TP {tp}"
         if decision.reason:
             detail += f" ({decision.reason})"
         if fill.status == "unknown":
@@ -161,7 +175,7 @@ class Engine:
         fill = self.broker.update_stop(sig.symbol, sig.stop)
         if fill.status != "filled":
             return self._reject(envelope, sig, f"stop not moved: {fill.message}")
-        detail = f"stop moved to {sig.stop}"
+        detail = f"{sig.symbol} stop moved to {sig.stop}"
         self.journal.log_signal("accepted", detail, envelope, sig.dedupe_key, sig.action)
         log.info(detail)
         return Result(200, "accepted", detail)
@@ -184,7 +198,7 @@ class Engine:
         if fill.status != "filled":
             self.journal.log_signal("error", f"close failed: {fill.message}", envelope, None, sig.action)
             return Result(200, "error", f"close failed: {fill.message}")
-        detail = f"closed {abs(fill.units)} oz @ {fill.price} pnl {fill.realized_pnl} ({sig.reason})"
+        detail = f"{sig.symbol} closed {abs(fill.units or 0):g} @ {fill.price} pnl {fill.realized_pnl} ({sig.reason})"
         self.journal.log_signal("accepted", detail, envelope, sig.dedupe_key, sig.action)
         log.info(detail)
         return Result(200, "accepted", detail)

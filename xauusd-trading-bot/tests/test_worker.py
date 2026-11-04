@@ -48,7 +48,7 @@ class SlowBroker(PaperBroker):
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):
-        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0, max_leverage=100.0,
+        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0, max_leverage=100.0, max_gross_leverage=100.0,
                           kill_switch_file="__no_kill_switch__")
         self.journal = Journal()
         self.workers = []

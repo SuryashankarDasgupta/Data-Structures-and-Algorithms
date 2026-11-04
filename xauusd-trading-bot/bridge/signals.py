@@ -21,7 +21,7 @@ class Signal:
     tf: str
     bar_time_ms: int
     ref_price: float
-    qty: int = 0
+    qty: float = 0.0
     sl_dist: float = 0.0
     tp_dist: float = 0.0
     fill_price: Optional[float] = None   # {{strategy.order.price}} from TradingView
@@ -90,7 +90,7 @@ def to_signal(envelope: dict[str, Any]) -> Signal:
         tf=str(inner.get("tf", "")),
         bar_time_ms=_num(inner, "bar_time", int),
         ref_price=_num(inner, "ref_price"),
-        qty=_num(inner, "qty", int, required=action in ENTRY_ACTIONS, default=0),
+        qty=_num(inner, "qty", float, required=action in ENTRY_ACTIONS, default=0.0),
         sl_dist=_num(inner, "sl_dist", required=action in ENTRY_ACTIONS, default=0.0),
         tp_dist=_num(inner, "tp_dist", required=False, default=0.0),
         fill_price=_num(envelope, "price", required=False),
@@ -101,8 +101,8 @@ def to_signal(envelope: dict[str, Any]) -> Signal:
     if sig.ref_price <= 0:
         raise SignalError("ref_price must be positive")
     if sig.is_entry:
-        if sig.qty < 1:
-            raise SignalError("qty must be >= 1")
+        if sig.qty <= 0:
+            raise SignalError("qty must be positive")
         if sig.sl_dist <= 0:
             raise SignalError("entries must carry a positive sl_dist (no unprotected trades)")
     if action in STOP_ACTIONS and sig.stop <= 0:

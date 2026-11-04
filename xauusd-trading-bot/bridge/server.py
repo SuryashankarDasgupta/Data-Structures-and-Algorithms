@@ -31,7 +31,7 @@ MAX_BODY = 16 * 1024
 log = logging.getLogger("bridge")
 
 
-def make_handler(engine: Engine, cfg: Config, worker: Optional[OrderWorker] = None):
+def make_handler(engine: Engine, cfg: Config, worker: Optional[OrderWorker] = None, scanner=None):
     """worker=None: execute orders before answering (sync). With a worker: answer 202 and queue (async)."""
     allowlist = cfg.allowlist_networks()
 
@@ -74,11 +74,15 @@ def make_handler(engine: Engine, cfg: Config, worker: Optional[OrderWorker] = No
                 return self._send(200, {"ok": True})
             if self.path == "/status":
                 day = utc_now().date().isoformat()
-                pos = engine.broker.position(cfg.allowed_symbols[0])
+                positions = engine.broker.positions()
+                pos = next((p for p in positions if p.symbol == cfg.allowed_symbols[0]), None)
                 return self._send(200, {
                     "broker": cfg.broker,
                     "balance": engine.broker.balance(),
-                    "position": pos.__dict__ if pos else None,
+                    "position": pos.__dict__ if pos else None,      # first allowed symbol (backward compatible)
+                    "positions": [p.__dict__ for p in positions],
+                    "symbols": list(cfg.allowed_symbols),
+                    "scanner": scanner.status() if scanner else None,
                     "entries_today": engine.journal.entries_on(day),
                     "next_news": [e.label() for e in engine.news.next_events(utc_now())] if engine.news else [],
                     "news_calendar_stale": engine.news.is_stale(utc_now()) if engine.news else None,
@@ -138,7 +142,15 @@ def main() -> None:
     engine = Engine(cfg, make_broker(cfg), Journal(cfg.journal_path), news=news)
     mode = cfg.resolved_execution_mode()
     worker = OrderWorker(engine) if mode == "async" else None
-    srv = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(engine, cfg, worker))
+    scanner = None
+    if cfg.scanner_enabled:
+        import threading
+
+        from .feeds import make_feeds
+        from .scanner import Scanner
+        scanner = Scanner(cfg, engine, make_feeds(cfg))
+        threading.Thread(target=scanner.run_forever, name="scanner", daemon=True).start()
+    srv = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(engine, cfg, worker, scanner))
     log.info("listening on %s:%s broker=%s execution=%s", cfg.host, cfg.port,
              cfg.broker + (f"/{cfg.oanda_env}" if cfg.broker == "oanda" else ""), mode)
     try:
@@ -147,6 +159,8 @@ def main() -> None:
         pass
     finally:
         srv.server_close()
+        if scanner is not None:
+            scanner.stop()
         if worker is not None:
             log.info("finishing %d queued order(s)", worker.depth())
             worker.stop()

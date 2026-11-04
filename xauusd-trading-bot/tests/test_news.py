@@ -124,7 +124,7 @@ class BridgeNewsTests(unittest.TestCase):
     def test_engine_rejects_entry_before_news_but_allows_close(self):
         now = datetime(2026, 11, 5, 22, 0, 5, tzinfo=timezone.utc)
         bar = int(datetime(2026, 11, 4, 22, 0, tzinfo=timezone.utc).timestamp() * 1000)
-        cfg = Config(webhook_secret="s" * 24, paper_spread=0.0, max_leverage=100)
+        cfg = Config(webhook_secret="s" * 24, paper_spread=0.0, max_leverage=100, max_gross_leverage=100)
         cal = NewsCalendar([NewsEvent(datetime(2026, 11, 6, 13, 30, tzinfo=timezone.utc), "NFP")])
         broker = PaperBroker(25_000, spread=0.0)
         broker.open_market("XAUUSD", 1, 2, 4000.0, 100.0, 0.0)

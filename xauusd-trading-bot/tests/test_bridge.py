@@ -66,7 +66,7 @@ def http_post(url, payload, headers=None):
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0, max_leverage=100.0,
+        self.cfg = Config(webhook_secret=SECRET, paper_spread=0.0, max_leverage=100.0, max_gross_leverage=100.0,
                           kill_switch_file=os.path.join(self.tmp.name, "KILL"))
         self.broker = PaperBroker(10_000, spread=0.0)
         self.journal = Journal()
@@ -131,7 +131,7 @@ class EngineTests(Base):
 
     def test_symbol_whitelist(self):
         p = entry()
-        p["signal"]["symbol"] = "BTCUSD"
+        p["signal"]["symbol"] = "EURUSD"
         self.assertEqual(self.engine.handle(p).status, "rejected")
 
     def test_qty_capped_by_risk(self):
@@ -231,7 +231,7 @@ class PaperStateTests(unittest.TestCase):
 
 class ConfigTests(unittest.TestCase):
     def test_live_requires_confirmation(self):
-        c = Config(webhook_secret=SECRET, broker="oanda", oanda_env="live",
+        c = Config(webhook_secret=SECRET, broker="oanda", oanda_env="live", allowed_symbols=("XAUUSD",),
                    oanda_account_id="a", oanda_token="t")
         with self.assertRaises(ValueError):
             c.validate()

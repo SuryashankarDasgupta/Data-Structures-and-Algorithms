@@ -1,23 +1,119 @@
-# XAUUSD Trading Bot (TradingView → webhook → broker)
+# XAUUSD + Crypto Trend Bot (24/7 scanner · TradingView webhooks · broker bridge)
 
-A research-backed, risk-managed gold (XAUUSD) trend-following system:
+A research-backed, risk-managed daily trend-following system. It started as a gold (XAUUSD) bot and now runs a
+**multi-market portfolio (gold + BTC + ETH by default)** with a scanner that checks every market around the clock.
 
 | Part | File | What it does |
 |---|---|---|
-| **Strategy** | `pine/xauusd_daily_trend.pine` | TradingView Pine v5 strategy for the **daily** chart: backtest in Strategy Tester, send webhook alerts |
-| **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
-| **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
-| **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
-| **Tests** | `tests/` | 86 tests: `python -m unittest discover -s tests -t .` |
+| **24/7 scanner** | `bridge/scanner.py`, `bridge/feeds.py`, `bridge/live_strategy.py` | Checks every market every 5 min, acts on completed daily bars: entries, trailing stops, exits |
+| **Strategy (TradingView)** | `pine/xauusd_daily_trend.pine` | Pine v5 strategy for the gold **daily** chart: backtest in Strategy Tester, send webhook alerts |
+| **Bridge** | `bridge/` | Receives alerts / scanner signals, re-checks risk, places orders (paper by default, OANDA optional), journals everything |
+| **Backtesters** | `backtest/` | Single-market (`backtest.run`) and multi-market portfolio (`backtest.portfolio_run`) with the same rules |
+| **Data** | `backtest/download.py`, `data/high_impact_usd.csv` | 20+ years of daily prices (forex closes repaired); FOMC/NFP/CPI calendar |
+| **Tests** | `tests/` | 103 tests: `python -m unittest discover -s tests -t .` |
 
-> **Bottom line:** over 2000–2026 this made **6.4%/yr with a −17.5% worst drawdown** at the default 2% risk per trade
-> (3.7%/yr, −8.8% at 1%).
-> Buying and holding gold made 10.9%/yr but fell **−44%** on the way. The bot earns about **1.7× more return per unit of
-> drawdown**, but it does **not** beat buy-and-hold on raw return. Nothing here turns $70 into $13k.
+> **Bottom line (20-year backtest, Nov 2006 → Nov 2026, $25k start, default 1% risk per position):**
+> gold + BTC + ETH turned **$25,000 into $154,062: 9.5%/yr with a −10.5% worst drawdown**, profitable in 15 of
+> 21 calendar years. At 2% risk: $712,564, 18.2%/yr, −20.0% drawdown. Gold alone at 2% risk: 5.4%/yr, −17.7%.
+> **Forex lost heavily after 2016** (−5.5%/yr, −57% drawdown) and is off by default. Crypto history only starts in 2014-2017, so the
+> first 8 years are gold only, and most of the crypto profit came from the 2016-2021 bull markets.
+> Nothing here turns $70 into $13k, or makes 30% a week.
 
 ---
 
-## Strategy rules
+## Multi-market portfolio and 24/7 scanner
+
+### Research: which markets?
+
+Same daily rules on every market, **no per-market tuning**. Decisions were made on 2006-2015 (tuning) and checked on
+2016-2026 (unseen), as for gold. Data: Yahoo Finance daily bars; forex closes repaired (Yahoo's forex "close" is a
+snapshot just after the open, so each close is replaced by the next bar's open), costs 0.01-0.015% per side for
+forex/gold and 0.10% for crypto.
+
+| Market group (1% risk per position) | 2006-2015 (tuning) | 2016-2026 (unseen) | Verdict |
+|---|---|---|---|
+| 12 forex pairs (majors + crosses), long/short | +5.5%/yr, −26% DD | **−5.5%/yr, −57% DD** | ❌ excluded |
+| Gold (long only) | +2.8%/yr, −8% DD | +3.3%/yr, −7% DD | ✅ |
+| BTC, ETH (long only) | profitable, PF 2.3-3.8 | profitable, PF 1.3-1.4 | ✅ |
+| 6 other coins | profitable | mixed (PF 0.9-1.7) | optional (survivorship bias) |
+| Shorting crypto or gold | – | lower returns or losses | ❌ off |
+
+Forex made money in 2006-2015 but with deep drawdowns (return/drawdown 0.21 vs gold's 0.35), then collapsed in
+2016-2026, which matches the industry record of forex trend profits fading after ~2010. **Be aware:** dropping forex
+partly uses hindsight from the 2016-2026 period, so the default portfolio's "unseen" figures are somewhat flattering.
+Picking today's top coins for a backtest flatters crypto (**survivorship bias**: many 2017-era coins died).
+BTC and ETH, the two largest coins since 2016, are the least affected, so they're the default.
+
+### 20-year results (fresh $25,000 account opened 4 Nov 2006)
+
+`python -m backtest.portfolio_run prices --risk-pct 1 --periods`
+
+| Portfolio | Risk/position | $25k becomes | Annual | Max DD | Return/DD | Sharpe | Trades | PF |
+|---|---|---|---|---|---|---|---|---|
+| **Gold + BTC + ETH (default)** | **1%** | **$154,062** | **9.5%** | **−10.5%** | **0.91** | 1.27 | 419 | 1.95 |
+| Gold + BTC + ETH | 2% | $712,564 | 18.2% | −20.0% | 0.91 | 1.26 | 419 | 1.78 |
+| Gold only | 2% | $71,462 | 5.4% | −17.7% | 0.31 | 0.82 | 191 | 1.75 |
+| All 21 markets (forex + 8 coins + gold) | 1% | $121,393 | 8.2% | −43.4% | 0.19 | 0.62 | 1,663 | 1.17 |
+| Forex only (12 pairs) | 1% | $22,308 | −0.6% | −56.6% | −0.01 | 0.03 | 1,532 | 0.99 |
+
+**By sub-period (default, 1% risk):** 2006-2014 (gold only) 3.4%/yr, −6.6% · 2015-2020 19.6%/yr, −7.8% ·
+2021-2026 8.1%/yr, −10.3%. Longest time below a previous high: ~4.1 years (Feb 2012 → Apr 2016, gold bear market).
+
+**Year by year (default, 1% risk, %):** 2006 +1.2 · 2007 +8.1 · 2008 +3.9 · 2009 +3.3 · 2010 +9.0 · 2011 +7.0 ·
+2012 −0.1 · 2013 −2.1 · 2014 −1.6 · 2015 +3.3 · 2016 +32.4 · 2017 +23.5 · 2018 −4.2 · 2019 +23.1 · 2020 +47.2 ·
+2021 +10.7 · 2022 −1.8 · 2023 +12.4 · 2024 +20.7 · 2025 +8.9 · 2026 −0.5 (to 4 Nov)
+
+**Profitability and drawdown by period (default, 20 years):**
+
+| | Daily | Weekly | Monthly | Yearly |
+|---|---|---|---|---|
+| 1% risk: profitable / losing / flat | 32.5 / 28.3 / 39.2% | 37.5 / 33.5 / 29.0% | 46.1 / 35.7 / 18.3% | 71.4 / 28.6 / 0% |
+| 1% risk: average return | +0.03% | +0.18% | +0.79% | +9.7% |
+| 1% risk: best / worst period | +4.9 / −2.8% | +8.5 / −3.9% | +13.8 / −4.1% | +47.2 / −4.2% |
+| 1% risk: worst drawdown within a period | −2.8% | −4.0% | −5.6% | −10.2% |
+| 2% risk: profitable | 32.5% | 37.5% | 46.5% | 71.4% |
+| 2% risk: average return | +0.06% | +0.35% | +1.52% | +20.0% |
+| 2% risk: worst drawdown within a period | −4.9% | −7.9% | −11.0% | −19.1% |
+
+### Running the 24/7 scanner
+
+The scanner runs inside the bridge (`SCANNER=on`) or alone (`python -m bridge.scanner`). Every `SCAN_INTERVAL_S`
+(300 s) it checks each market in `ALLOWED_SYMBOLS`:
+
+1. **Reconcile:** a position the broker closed (its stop was hit) is forgotten.
+2. **Stop watch (paper only):** the live price is checked against the stop; a real broker holds the stop itself.
+3. **New daily close:** the rules decide whether to enter, trail the stop, or exit. Crypto bars close at 00:00 UTC
+   (24/7), gold and forex at 17:00 New York (24/5).
+
+It trades **daily** bars: checking every 5 minutes means stops and new closes are handled within minutes, not
+that it trades more often. Orders go through the same risk checks, duplicate protection and journal as webhooks.
+A replay test confirms the live scanner and the portfolio backtest trade on the same days.
+
+```bash
+python -m backtest.download --out prices          # 20 years of gold, BTC, ETH (add --all for every market)
+python -m backtest.portfolio_run prices --periods # reproduce the results above
+python -m bridge.scanner --once                   # one live scan cycle (paper), prints each market's decision
+SCANNER=on python -m bridge.server                # bridge + scanner, 24/7
+curl localhost:8080/status                        # positions, last scan, per-market state and errors
+```
+
+**Data sources:** crypto from Coinbase's public API (no key). Gold and forex from OANDA (`NONFX_FEED=oanda`, needs
+`OANDA_TOKEN`) or Yahoo (`NONFX_FEED=yahoo`, unofficial, paper only).
+**Brokers:** paper for everything. OANDA for gold/forex only, since OANDA doesn't offer these cryptocurrencies in most
+countries. Real crypto execution needs an exchange adapter (not included). Keep crypto in paper until then.
+**Don't run both** TradingView alerts and the scanner for the same market: two sources would manage one position.
+The scanner leaves positions it didn't open alone.
+
+**Portfolio risk limits** (bridge and backtest use the same values): `RISK_PCT` 1% per position, `MAX_POSITIONS` 4,
+`MAX_LEVERAGE` 1× per position, `MAX_GROSS_LEVERAGE` 3× total, plus the existing daily-loss lockout, trade cap,
+kill switch and news guard (gold/forex only; crypto is exempt).
+
+**Caveats specific to this section:** 20 years only for gold (crypto from 2014/2017). Forex OHLC was repaired, and
+~20% of repaired bars were widened to include the end-of-day price; validate on broker data before live use.
+Crypto spot has no funding costs, but perpetual futures and CFDs do (often 5-30%/yr for longs in bull markets),
+and these aren't modelled. Crypto can gap 30-40% in a day (March 2020), and stops then fill far below their level.
+
+## Strategy rules (gold, same for every market)
 
 Use on a **daily** chart (`OANDA:XAUUSD`, 1D).
 

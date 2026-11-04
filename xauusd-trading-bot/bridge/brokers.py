@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class Position:
     symbol: str
-    units: int                 # signed: >0 long, <0 short
+    units: float               # signed: >0 long, <0 short
     avg_price: float
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
@@ -23,7 +23,7 @@ class Position:
 class Fill:
     status: str                # filled | unknown | failed
     price: Optional[float] = None
-    units: int = 0
+    units: float = 0
     realized_pnl: Optional[float] = None
     broker_ref: str = ""
     message: str = ""
@@ -32,6 +32,7 @@ class Fill:
 class Broker(Protocol):
     def balance(self) -> float: ...
     def position(self, symbol: str) -> Optional[Position]: ...
+    def positions(self) -> list[Position]: ...
     def open_market(self, symbol: str, side: int, units: int, ref_price: float,
                     sl_dist: float, tp_dist: float) -> Fill: ...
     def close(self, symbol: str, price_hint: Optional[float] = None) -> Fill: ...
@@ -86,12 +87,22 @@ class PaperBroker:
     def position(self, symbol: str) -> Optional[Position]:
         return self._positions.get(symbol)
 
+    def positions(self) -> list[Position]:
+        return list(self._positions.values())
+
+    def half_spread(self, symbol: str, price: float) -> float:
+        """XAUUSD uses the configured USD spread per oz; other markets use their modelled % cost per side."""
+        if symbol == "XAUUSD":
+            return self.spread / 2
+        from backtest.markets import default_spec
+        return price * default_spec(symbol).cost_pct / 100
+
     def open_market(self, symbol, side, units, ref_price, sl_dist, tp_dist) -> Fill:
         if symbol in self._positions:
             return Fill("failed", message="position already open")
-        price = round(ref_price + side * self.spread / 2, 3)
-        sl = round(price - side * sl_dist, 3)
-        tp = round(price + side * tp_dist, 3) if tp_dist > 0 else None
+        price = round(ref_price + side * self.half_spread(symbol, ref_price), 6)
+        sl = round(price - side * sl_dist, 6)
+        tp = round(price + side * tp_dist, 6) if tp_dist > 0 else None
         self._seq += 1
         self._positions[symbol] = Position(symbol, side * units, price, sl, tp)
         self._save()
@@ -103,7 +114,7 @@ class PaperBroker:
             return Fill("failed", message="no open position")
         if not tightens(pos.units, pos.stop_loss, stop):
             return Fill("failed", message=f"stop {stop} would loosen current stop {pos.stop_loss}")
-        pos.stop_loss = round(stop, 3)
+        pos.stop_loss = round(stop, 6)
         self._save()
         return Fill("filled", price=pos.stop_loss, units=pos.units)
 
@@ -114,7 +125,7 @@ class PaperBroker:
         if price_hint is None:
             return Fill("failed", message="paper broker needs a price to close")
         side = 1 if pos.units > 0 else -1
-        price = round(price_hint - side * self.spread / 2, 3)
+        price = round(price_hint - side * self.half_spread(symbol, price_hint), 6)
         pnl = round((price - pos.avg_price) * pos.units, 2)
         self._balance = round(self._balance + pnl, 2)
         del self._positions[symbol]
@@ -129,7 +140,7 @@ OANDA_HOSTS = {
     "practice": "https://api-fxpractice.oanda.com",
     "live": "https://api-fxtrade.oanda.com",
 }
-OANDA_INSTRUMENTS = {"XAUUSD": "XAU_USD"}
+from backtest.markets import OANDA as OANDA_INSTRUMENTS  # noqa: E402
 
 
 class OandaBroker:
@@ -177,7 +188,7 @@ class OandaBroker:
         order = {
             "type": "MARKET",
             "instrument": self._inst(symbol),
-            "units": str(side * units),
+            "units": str(int(side * units)),     # OANDA XAU_USD and forex trade whole units
             "timeInForce": "FOK",
             "positionFill": "DEFAULT",
             "stopLossOnFill": {"distance": f"{sl_dist:.3f}", "timeInForce": "GTC"},
@@ -230,6 +241,20 @@ class OandaBroker:
         if not done:
             return Fill("failed", message="new stop would loosen existing stop(s)")
         return Fill("filled", price=stop, units=done)
+
+    def positions(self) -> list[Position]:
+        r = self.http.get(self._url("/openPositions"), timeout=self.timeout)
+        r.raise_for_status()
+        rev = {v: k for k, v in OANDA_INSTRUMENTS.items()}
+        out = []
+        for p in r.json().get("positions", []):
+            sym = rev.get(p["instrument"], p["instrument"])
+            long_u, short_u = float(p["long"]["units"]), float(p["short"]["units"])
+            if long_u:
+                out.append(Position(sym, long_u, float(p["long"]["averagePrice"])))
+            elif short_u:
+                out.append(Position(sym, short_u, float(p["short"]["averagePrice"])))
+        return out
 
     def close(self, symbol, price_hint=None) -> Fill:
         pos = self.position(symbol)
