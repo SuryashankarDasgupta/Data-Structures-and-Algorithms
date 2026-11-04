@@ -169,16 +169,18 @@ the day. That matters for stops, much less for a strategy holding for weeks.
 
 **Options** (*News handling* input in Pine, `news_mode` in the backtester):
 
-| Mode (at 1% risk) | What it does | 10-yr annual return | Max DD | Trades |
-|---|---|---|---|---|
-| Off | ignore news | 2.77% | −6.2% | 100 |
-| **Block entries (default)** | no new entry if a release is on the next session | 2.64% | −6.2% | 98 |
-| Tighten stop | block + raise the stop to close − 1×ATR before a release | 2.75% | −6.5% | 124 |
-| Go flat | block + close positions before every release | 2.14% | −8.1% | 224 |
+Fresh $25,000 account opened 2016-11-04 (`--fresh-start 2016-11-04 --news-mode ...`):
 
-None of them improves the backtest: stepping aside costs fees and misses moves, and the 2–2.5×ATR stops already
-absorb most news spikes. **Block entries** is the default as cheap insurance (−0.13%/yr, 2 trades in 10 years,
-which is within noise). It protects against what a backtest can't model: spreads widening 5–10× and fills slipping
+| Mode | What it does | 2% risk: annual return / max DD | 1% risk: annual return / max DD | Trades (2%) |
+|---|---|---|---|---|
+| Off | ignore news | 5.59% / −12.4% | 2.73% / −6.0% | 101 |
+| **Block entries (default)** | no new entry if a release is on the next session | **5.52% / −12.1%** | 2.75% / −6.2% | 99 |
+| Tighten stop | block + raise the stop to close − 1×ATR before a release | 5.08% / −11.6% | 2.75% / −6.5% | 127 |
+| Go flat | block + close positions before every release | 3.85% / −16.3% | 2.24% / −8.5% | 231 |
+
+None of them meaningfully improves the backtest: stepping aside costs fees and misses moves, and the 2–2.5×ATR stops
+already absorb most news spikes. *Go flat* is clearly worse. **Block entries** is the default as cheap insurance
+(within ±0.1%/yr of *Off*, 2 trades in 10 years, which is noise). It protects against what a backtest can't model: spreads widening 5–10× and fills slipping
 right at release time. Choose *Off* if you prefer the best backtest number.
 
 **The bridge** also checks the calendar using exact release times (DST handled) and rejects new entries from

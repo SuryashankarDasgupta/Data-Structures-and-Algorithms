@@ -45,7 +45,7 @@ maxLev   = input.float(1.0, "Max notional (x equity)", minval=0.1, step=0.1, gro
 qtyStep  = input.float(1.0, "Quantity step (oz)", minval=0.01, group=grpR, tooltip="1 = whole ounces (0.01 lot on most CFD brokers). Use smaller only if your broker allows it.")
 
 grpN = "High-impact news"
-newsMode   = input.string("Block entries", "News handling", options=["Off", "Block entries", "Tighten stop", "Go flat"], group=grpN, tooltip="Applies when an FOMC decision, NFP or CPI release falls on the next trading session. 10-year backtest: Off 2.77%/yr, Block 2.64%/yr, Tighten 2.75%/yr, Go flat 2.14%/yr. Block is the default because live spreads/slippage at release time are not in the backtest.")
+newsMode   = input.string("Block entries", "News handling", options=["Off", "Block entries", "Tighten stop", "Go flat"], group=grpN, tooltip="Applies when an FOMC decision, NFP or CPI release falls on the next trading session. 10-year backtest at 2% risk: Off 5.59%/yr, Block 5.52%/yr, Tighten 5.08%/yr, Go flat 3.85%/yr. Block is the default because live spreads/slippage at release time are not in the backtest.")
 useFomc    = input.bool(true, "FOMC rate decisions", group=grpN, inline="ev")
 useNfp     = input.bool(true, "NFP", group=grpN, inline="ev")
 useCpi     = input.bool(true, "CPI", group=grpN, inline="ev")
