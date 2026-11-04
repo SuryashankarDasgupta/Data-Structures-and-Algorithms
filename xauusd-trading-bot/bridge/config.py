@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 
 LIVE_CONFIRMATION = "yes-i-understand-the-risk"
+EXECUTION_MODES = ("sync", "async", "auto")
 
 
 def is_loopback(host: str) -> bool:
@@ -42,6 +43,10 @@ class Config:
     # as cloudflared). "" = trust no header. Cloudflare sets CF-Connecting-IP and overwrites client values.
     trusted_ip_header: str = ""
 
+    # "sync" = place the order before answering the webhook; "async" = answer 202 at once and execute in a
+    # background worker (TradingView gives up after ~3 s); "auto" = async for OANDA, sync for paper
+    execution_mode: str = "auto"
+
     # Paper broker
     paper_start_balance: float = 10_000.0
     paper_spread: float = 0.30         # USD per oz, full spread
@@ -52,6 +57,7 @@ class Config:
     oanda_account_id: str = ""
     oanda_token: str = ""
     allow_live_trading: str = ""
+    oanda_timeout_s: float = 10.0        # per HTTP request
 
     # High-impact news guard: reject new entries within this many hours before a release (0 = off)
     news_block_hours: float = 24.0
@@ -82,6 +88,7 @@ class Config:
             kill_switch_file=_env("KILL_SWITCH_FILE", "KILL_SWITCH"),
             ip_allowlist=tup("IP_ALLOWLIST", ""),
             trusted_ip_header=_env("TRUSTED_IP_HEADER", "").strip(),
+            execution_mode=_env("EXECUTION_MODE", "auto").strip().lower(),
             paper_start_balance=float(_env("PAPER_START_BALANCE", "10000")),
             paper_spread=float(_env("PAPER_SPREAD", "0.30")),
             paper_state_file=_env("PAPER_STATE_FILE", "paper_state.json"),
@@ -89,6 +96,7 @@ class Config:
             oanda_account_id=_env("OANDA_ACCOUNT_ID", ""),
             oanda_token=_env("OANDA_TOKEN", ""),
             allow_live_trading=_env("ALLOW_LIVE_TRADING", ""),
+            oanda_timeout_s=float(_env("OANDA_TIMEOUT_S", "10")),
             news_block_hours=float(_env("NEWS_BLOCK_HOURS", "24")),
             news_block_after_min=float(_env("NEWS_BLOCK_AFTER_MIN", "30")),
             news_events=tup("NEWS_EVENTS", "FOMC,NFP,CPI"),
@@ -101,6 +109,10 @@ class Config:
             raise ValueError("WEBHOOK_SECRET must be set and at least 16 characters long")
         if self.broker not in ("paper", "oanda"):
             raise ValueError(f"Unknown BROKER {self.broker!r}")
+        if self.execution_mode not in EXECUTION_MODES:
+            raise ValueError(f"EXECUTION_MODE must be one of {', '.join(EXECUTION_MODES)}")
+        if self.oanda_timeout_s <= 0:
+            raise ValueError("OANDA_TIMEOUT_S must be positive")
         if self.trusted_ip_header and not re.fullmatch(r"[A-Za-z0-9-]+", self.trusted_ip_header):
             raise ValueError("TRUSTED_IP_HEADER must be a single header name, e.g. CF-Connecting-IP")
         self.allowlist_networks()          # raises on a bad IP_ALLOWLIST entry
@@ -119,6 +131,11 @@ class Config:
             return [ipaddress.ip_network(e, strict=False) for e in self.ip_allowlist]
         except ValueError as exc:
             raise ValueError(f"IP_ALLOWLIST: {exc}") from None
+
+    def resolved_execution_mode(self) -> str:
+        if self.execution_mode == "auto":
+            return "async" if self.broker == "oanda" else "sync"
+        return self.execution_mode
 
     def warnings(self) -> list[str]:
         """Settings that are valid but almost certainly not what the user wants."""

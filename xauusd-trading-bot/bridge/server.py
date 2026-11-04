@@ -3,7 +3,10 @@
 Endpoints
   POST /webhook  - TradingView alert body
   GET  /health   - liveness
-  GET  /status   - balance, open position, today's activity
+  GET  /status   - balance, open position, today's activity, order queue
+
+In async mode (default for OANDA) a valid alert is answered 202 "queued" at once and the order is placed by a
+background worker, one at a time, so TradingView's ~3 s webhook timeout is never hit.
 
 Run:  WEBHOOK_SECRET=... python -m bridge.server
 Note: TradingView only delivers webhooks to ports 80/443, so put this behind a reverse proxy
@@ -22,12 +25,14 @@ from .config import Config, is_loopback
 from .engine import Engine
 from .journal import Journal, utc_now
 from .news import DEFAULT_PATH as NEWS_DEFAULT, NewsCalendar
+from .worker import OrderWorker
 
 MAX_BODY = 16 * 1024
 log = logging.getLogger("bridge")
 
 
-def make_handler(engine: Engine, cfg: Config):
+def make_handler(engine: Engine, cfg: Config, worker: Optional[OrderWorker] = None):
+    """worker=None: execute orders before answering (sync). With a worker: answer 202 and queue (async)."""
     allowlist = cfg.allowlist_networks()
 
     class Handler(BaseHTTPRequestHandler):
@@ -77,6 +82,9 @@ def make_handler(engine: Engine, cfg: Config):
                     "entries_today": engine.journal.entries_on(day),
                     "next_news": [e.label() for e in engine.news.next_events(utc_now())] if engine.news else [],
                     "news_calendar_stale": engine.news.is_stale(utc_now()) if engine.news else None,
+                    "execution_mode": "async" if worker else "sync",
+                    "queue_depth": worker.depth() if worker else 0,
+                    "recent_results": worker.recent_results() if worker else [],
                 })
             self._send(404, {"error": "not found"})
 
@@ -94,8 +102,17 @@ def make_handler(engine: Engine, cfg: Config):
                 return self._send(403, {"error": "forbidden"})
             if not raw:
                 return self._send(400, {"error": "bad body size"})
-            result = engine.handle_raw(raw)
-            self._send(result.http_status, result.as_dict())
+            if worker is None:
+                result = engine.handle_raw(raw)
+                return self._send(result.http_status, result.as_dict())
+            rejected, envelope, sig = engine.precheck_raw(raw)
+            if rejected is not None:
+                return self._send(rejected.http_status, rejected.as_dict())
+            if not worker.submit(envelope, sig):
+                engine.release(sig)
+                engine.journal.log_signal("error", "order queue full", envelope, sig.dedupe_key, sig.action)
+                return self._send(503, {"status": "error", "detail": "order queue full"})
+            self._send(202, {"status": "queued", "detail": sig.dedupe_key})
 
         def log_message(self, fmt, *args):
             log.info("%s %s", self._client_ip() or "unknown-ip", fmt % args)
@@ -119,13 +136,20 @@ def main() -> None:
         log.info("news guard on (%sh before, %smin after); next: %s", cfg.news_block_hours,
                  cfg.news_block_after_min, nxt[0].label() if nxt else "none in calendar")
     engine = Engine(cfg, make_broker(cfg), Journal(cfg.journal_path), news=news)
-    srv = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(engine, cfg))
-    log.info("listening on %s:%s broker=%s", cfg.host, cfg.port,
-             cfg.broker + (f"/{cfg.oanda_env}" if cfg.broker == "oanda" else ""))
+    mode = cfg.resolved_execution_mode()
+    worker = OrderWorker(engine) if mode == "async" else None
+    srv = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(engine, cfg, worker))
+    log.info("listening on %s:%s broker=%s execution=%s", cfg.host, cfg.port,
+             cfg.broker + (f"/{cfg.oanda_env}" if cfg.broker == "oanda" else ""), mode)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        srv.server_close()
+        if worker is not None:
+            log.info("finishing %d queued order(s)", worker.depth())
+            worker.stop()
 
 
 if __name__ == "__main__":

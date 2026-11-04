@@ -253,6 +253,9 @@ touch KILL_SWITCH                   # instantly block new entries (closes and st
 * max trades/day, daily-loss lock-out, kill-switch file
 * size capped by `MAX_UNITS`, `MAX_RISK_PCT` of balance **and** `MAX_LEVERAGE` (notional ÷ balance, default 1 = no leverage)
 * one order at a time, **no blind retries**: on a network error it checks the position and marks the order `unknown`
+* answers within TradingView's ~3 s webhook timeout: in OANDA mode the bridge answers `202 queued` immediately and
+  executes orders in a background worker, one at a time, in arrival order (`EXECUTION_MODE=auto`; paper mode stays
+  synchronous). `/status` shows `execution_mode`, `queue_depth` and `recent_results`
 * every alert, decision and order journaled in SQLite (`journal.sqlite3`)
 
 ## 3. Broker execution (OANDA practice)

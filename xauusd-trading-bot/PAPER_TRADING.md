@@ -59,7 +59,11 @@ warns about it at startup.
 curl.exe http://localhost:8080/status
 ```
 
-Shows broker (must say `paper`), balance, open position, entries today and the next news events.
+Shows broker (must say `paper`), balance, open position, entries today and the next news events, plus
+`execution_mode`. Paper trading runs in `sync` mode: each alert is executed before TradingView gets its answer,
+so `queue_depth` stays 0 and `recent_results` stays empty. With `EXECUTION_MODE=async` (the default for OANDA), the
+bridge answers `202 queued` at once. `queue_depth` then shows orders waiting for the background worker, and
+`recent_results` the last 20 executed ones (time, alert key, status, detail).
 
 Daily summary (realized P&L, orders, rejected alerts) for a UTC date:
 

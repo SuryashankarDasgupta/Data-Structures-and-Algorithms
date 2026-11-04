@@ -36,51 +36,85 @@ class Engine:
         self.risk = RiskManager(cfg, journal, news)
         self.clock = clock
         self._lock = threading.Lock()   # one order at a time: single writer to the broker
+        self._inflight: set[str] = set()   # dedupe keys accepted by precheck but not yet executed
+        self._inflight_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     def handle_raw(self, raw: bytes | str) -> Result:
+        rejected, envelope, sig = self.precheck_raw(raw)
+        if rejected is not None:
+            return rejected
+        return self.execute(envelope, sig)
+
+    def precheck_raw(self, raw: bytes | str) -> tuple[Optional[Result], Optional[dict], Optional[Signal]]:
+        """parse_body + precheck: (result, None, None) to answer now, or (None, envelope, signal)."""
         try:
             envelope = parse_body(raw)
         except SignalError as exc:
             self.journal.log_signal("rejected", str(exc), raw if isinstance(raw, str) else raw.decode(errors="replace"))
-            return Result(400, "rejected", str(exc))
-        return self.handle(envelope)
+            return Result(400, "rejected", str(exc)), None, None
+        rejected, sig = self.precheck(envelope)
+        return rejected, envelope, sig
 
     def handle(self, envelope: dict[str, Any]) -> Result:
+        """Synchronous path: checks, then the broker call, before answering."""
+        rejected, sig = self.precheck(envelope)
+        if rejected is not None:
+            return rejected
+        return self.execute(envelope, sig)
+
+    def precheck(self, envelope: dict[str, Any]) -> tuple[Optional[Result], Optional[Signal]]:
+        """Fast checks with no broker calls: auth, validation, symbol, staleness, duplicates.
+        Returns (result, None) to answer now, or (None, signal) after reserving the signal's dedupe key;
+        the caller must then pass it to execute() (or release())."""
         secret = str(envelope.get("secret", ""))
         if not hmac.compare_digest(secret.encode(), self.cfg.webhook_secret.encode()):
             self.journal.log_signal("rejected", "bad secret", envelope)
-            return Result(401, "rejected", "unauthorized")
+            return Result(401, "rejected", "unauthorized"), None
 
         try:
             sig = to_signal(envelope)
         except SignalError as exc:
             self.journal.log_signal("rejected", str(exc), envelope)
-            return Result(400, "rejected", str(exc))
+            return Result(400, "rejected", str(exc)), None
 
         if sig.symbol not in self.cfg.allowed_symbols:
-            return self._reject(envelope, sig, f"symbol {sig.symbol} not allowed")
+            return self._reject(envelope, sig, f"symbol {sig.symbol} not allowed"), None
 
-        now = self.clock()
         bar_close = sig.bar_time_ms / 1000 + tf_to_seconds(sig.tf)
-        age = now.timestamp() - bar_close
+        age = self.clock().timestamp() - bar_close
         if age > self.cfg.max_signal_delay_s:
-            return self._reject(envelope, sig, f"stale signal ({age:.0f}s after bar close)")
+            return self._reject(envelope, sig, f"stale signal ({age:.0f}s after bar close)"), None
 
-        with self._lock:
-            if self.journal.is_duplicate(sig.dedupe_key):
+        with self._inflight_lock:
+            if sig.dedupe_key in self._inflight or self.journal.is_duplicate(sig.dedupe_key):
                 self.journal.log_signal("duplicate", "already processed", envelope, sig.dedupe_key, sig.action)
-                return Result(200, "duplicate", "already processed")
-            try:
-                if sig.is_entry:
-                    return self._entry(envelope, sig, now)
-                if sig.action == "update_stop":
-                    return self._update_stop(envelope, sig)
-                return self._close(envelope, sig, now)
-            except Exception as exc:  # noqa: BLE001 - never crash the server on broker errors
-                log.exception("broker error")
-                self.journal.log_signal("error", f"broker error: {exc}", envelope, sig.dedupe_key, sig.action)
-                return Result(502, "error", f"broker error: {exc}")
+                return Result(200, "duplicate", "already processed"), None
+            self._inflight.add(sig.dedupe_key)
+        return None, sig
+
+    def release(self, sig: Signal) -> None:
+        """Give up a dedupe key reserved by precheck without executing (e.g. the queue was full)."""
+        with self._inflight_lock:
+            self._inflight.discard(sig.dedupe_key)
+
+    def execute(self, envelope: dict[str, Any], sig: Signal) -> Result:
+        """Everything that touches the broker, one signal at a time."""
+        try:
+            with self._lock:
+                now = self.clock()
+                try:
+                    if sig.is_entry:
+                        return self._entry(envelope, sig, now)
+                    if sig.action == "update_stop":
+                        return self._update_stop(envelope, sig)
+                    return self._close(envelope, sig, now)
+                except Exception as exc:  # noqa: BLE001 - never crash the server on broker errors
+                    log.exception("broker error")
+                    self.journal.log_signal("error", f"broker error: {exc}", envelope, sig.dedupe_key, sig.action)
+                    return Result(502, "error", f"broker error: {exc}")
+        finally:
+            self.release(sig)
 
     # ------------------------------------------------------------------
     def _reject(self, envelope, sig: Signal, reason: str) -> Result:
