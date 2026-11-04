@@ -248,5 +248,5 @@ class OandaBroker:
 
 def make_broker(cfg) -> Broker:
     if cfg.broker == "oanda":
-        return OandaBroker(cfg.oanda_account_id, cfg.oanda_token, cfg.oanda_env)
+        return OandaBroker(cfg.oanda_account_id, cfg.oanda_token, cfg.oanda_env, timeout=cfg.oanda_timeout_s)
     return PaperBroker(cfg.paper_start_balance, cfg.paper_spread, cfg.paper_state_file)

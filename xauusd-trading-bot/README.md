@@ -8,7 +8,7 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
 | **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
 | **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
-| **Tests** | `tests/` | 67 tests: `python -m unittest discover -s tests -t .` |
+| **Tests** | `tests/` | 86 tests: `python -m unittest discover -s tests -t .` |
 
 > **Bottom line:** over 2000–2026 this made **6.4%/yr with a −17.5% worst drawdown** at the default 2% risk per trade
 > (3.7%/yr, −8.8% at 1%).
@@ -243,13 +243,19 @@ touch KILL_SWITCH                   # instantly block new entries (closes and st
 
 ### What the bridge enforces (even if Pine inputs are wrong)
 
-* shared-secret auth (constant-time compare), optional IP allowlist, 16 KB body limit
+* shared-secret auth (constant-time compare), 16 KB body limit
+* optional `IP_ALLOWLIST` (IPs or CIDR ranges). The client IP is the socket address, or, only for requests from a
+  loopback proxy, the header named in `TRUSTED_IP_HEADER` (`CF-Connecting-IP` behind cloudflared).
+  `X-Forwarded-For` is never trusted, since any client can set it. A missing or malformed header is rejected (403)
 * symbol whitelist, required stop on every entry (no unprotected trades)
 * stop updates are **tighten-only** and refused if on the wrong side of price
 * stale-alert rejection, duplicate-alert suppression, one position at a time
 * max trades/day, daily-loss lock-out, kill-switch file
 * size capped by `MAX_UNITS`, `MAX_RISK_PCT` of balance **and** `MAX_LEVERAGE` (notional ÷ balance, default 1 = no leverage)
 * one order at a time, **no blind retries**: on a network error it checks the position and marks the order `unknown`
+* answers within TradingView's ~3 s webhook timeout: in OANDA mode the bridge answers `202 queued` immediately and
+  executes orders in a background worker, one at a time, in arrival order (`EXECUTION_MODE=auto`; paper mode stays
+  synchronous). `/status` shows `execution_mode`, `queue_depth` and `recent_results`
 * every alert, decision and order journaled in SQLite (`journal.sqlite3`)
 
 ## 3. Broker execution (OANDA practice)

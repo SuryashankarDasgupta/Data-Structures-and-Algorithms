@@ -37,19 +37,43 @@ around the daily close, **~22:00 UTC (03:30 IST)**. Turn off sleep while paper t
    Cloudflare tunnel for a fixed URL. Anyone with the URL can reach the bridge, but every request needs the
    secret, and paper mode can't touch real money.
 
+### Optional: accept only TradingView's IPs
+
+The secret stays the main guard; this is extra protection. Behind cloudflared every request reaches the bridge
+from 127.0.0.1, so the bridge must take the real client IP from Cloudflare's `CF-Connecting-IP` header. Add to
+`.env`, then restart the bridge:
+
+```
+IP_ALLOWLIST=52.89.214.238,34.212.75.30,54.218.53.128,52.32.178.7
+TRUSTED_IP_HEADER=CF-Connecting-IP
+```
+
+Check the IPs against TradingView's help page ("How to configure webhook alerts") first; the list can change. If
+TradingView changes them without notice, alerts start failing with 403, so look at the alert log's *Webhook status*
+column after enabling this. Setting `IP_ALLOWLIST` without `TRUSTED_IP_HEADER` rejects everything, and the bridge
+warns about it at startup.
+
 ## Check on it
 
 ```powershell
 curl.exe http://localhost:8080/status
 ```
 
-Shows broker (must say `paper`), balance, open position, entries today and the next news events.
+Shows broker (must say `paper`), balance, open position, entries today and the next news events, plus
+`execution_mode`. Paper trading runs in `sync` mode: each alert is executed before TradingView gets its answer,
+so `queue_depth` stays 0 and `recent_results` stays empty. With `EXECUTION_MODE=async` (the default for OANDA), the
+bridge answers `202 queued` at once. `queue_depth` then shows orders waiting for the background worker, and
+`recent_results` the last 20 executed ones (time, alert key, status, detail).
 
-Daily summary (realized P&L, orders, rejected alerts) for a UTC date:
+Daily summary (realized P&L, orders, rejected alerts), plus the status above with `-Status`:
 
 ```powershell
-$env:JOURNAL_PATH = "runtime\journal.sqlite3"; .venv\Scripts\python -m bridge.report 2026-11-05
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\report.ps1 -Yesterday -Status
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\report.ps1 -Date 2026-11-05
 ```
+
+Days are **UTC** days, because the bridge journals by UTC. The daily-close alerts at ~03:30 IST belong to the
+previous UTC day, so in the morning use `-Yesterday`. Without a date the script reports today (UTC).
 
 ## Kill switch
 
@@ -64,7 +88,7 @@ Remove-Item runtime\KILL_SWITCH                   # off
 
 ## Weekly checks
 
-1. **Bridge vs TradingView:** compare the bridge journal (`bridge.report` for each day with activity) with the
+1. **Bridge vs TradingView:** compare the bridge journal (`scripts\report.ps1 -Date <day>` for each day with activity) with the
    trades in TradingView's Strategy Tester → *List of trades*. Every TradingView entry and exit should appear in
    the journal as `accepted`. Missing ones mean the bridge or tunnel was down, or the alert's URL was stale.
    Rejected ones show the reason (news guard, stale alert, risk limit). If they drift apart, close the paper

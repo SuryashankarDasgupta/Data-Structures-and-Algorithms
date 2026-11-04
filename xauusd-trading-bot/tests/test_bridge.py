@@ -1,8 +1,10 @@
+import contextlib
 import json
 import os
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
@@ -36,6 +38,29 @@ def stop_update(stop, ref=4002.0, bar=BAR_1H):
     return {"secret": SECRET,
             "signal": {"action": "update_stop", "symbol": "XAUUSD", "stop": stop,
                        "ref_price": ref, "tf": "60", "bar_time": bar}}
+
+
+@contextlib.contextmanager
+def running_server(engine, cfg, **kw):
+    """Real bridge HTTP server on 127.0.0.1 with an ephemeral port; yields its base URL."""
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(engine, cfg, **kw))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def http_post(url, payload, headers=None):
+    """POST JSON; returns (status code, parsed body) for any status, 4xx/5xx included."""
+    req = urllib.request.Request(url + "/webhook", data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, json.load(resp)
+    except urllib.error.HTTPError as err:
+        return err.code, json.load(err)
 
 
 class Base(unittest.TestCase):
@@ -217,6 +242,22 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Config(webhook_secret="short").validate()
 
+    def test_allowlist_entries_validated(self):
+        Config(webhook_secret=SECRET, ip_allowlist=("52.89.214.238", "52.89.214.0/24", "::1")).validate()
+        with self.assertRaises(ValueError):
+            Config(webhook_secret=SECRET, ip_allowlist=("not-an-ip",)).validate()
+
+    def test_trusted_header_must_be_one_name(self):
+        Config(webhook_secret=SECRET, trusted_ip_header="CF-Connecting-IP").validate()
+        with self.assertRaises(ValueError):
+            Config(webhook_secret=SECRET, trusted_ip_header="X-Real-IP, X-Forwarded-For").validate()
+
+    def test_warns_when_allowlist_cannot_work_on_loopback(self):
+        c = Config(webhook_secret=SECRET, host="127.0.0.1", ip_allowlist=("52.89.214.238",))
+        self.assertTrue(any("TRUSTED_IP_HEADER" in w for w in c.warnings()))
+        c.trusted_ip_header = "CF-Connecting-IP"
+        self.assertEqual(c.warnings(), [])
+
 
 class FakeResp:
     def __init__(self, status, body):
@@ -324,6 +365,51 @@ class ServerTests(Base):
         finally:
             srv.shutdown()
             srv.server_close()
+
+
+class IpAllowlistTests(Base):
+    """The test server listens on 127.0.0.1, exactly like the bridge behind cloudflared."""
+    TV = "52.89.214.238"
+
+    def post(self, headers=None, **cfg):
+        for k, v in cfg.items():
+            setattr(self.cfg, k, v)
+        with running_server(self.engine, self.cfg) as url:
+            return http_post(url, entry(), headers)
+
+    def test_spoofed_forwarded_for_rejected(self):
+        code, _ = self.post({"X-Forwarded-For": self.TV}, ip_allowlist=(self.TV,))
+        self.assertEqual(code, 403)
+        self.assertIsNone(self.broker.position("XAUUSD"))
+
+    def test_trusted_header_allowed_ip_reaches_engine(self):
+        code, body = self.post({"CF-Connecting-IP": self.TV}, ip_allowlist=(self.TV,),
+                               trusted_ip_header="CF-Connecting-IP")
+        self.assertEqual((code, body["status"]), (200, "accepted"))
+
+    def test_trusted_header_other_ip_rejected(self):
+        code, _ = self.post({"CF-Connecting-IP": "1.2.3.4"}, ip_allowlist=(self.TV,),
+                            trusted_ip_header="CF-Connecting-IP")
+        self.assertEqual(code, 403)
+
+    def test_trusted_header_missing_rejected(self):
+        code, _ = self.post({"X-Forwarded-For": self.TV}, ip_allowlist=(self.TV,),
+                            trusted_ip_header="CF-Connecting-IP")
+        self.assertEqual(code, 403)
+
+    def test_trusted_header_garbage_rejected(self):
+        code, _ = self.post({"CF-Connecting-IP": "52.89.214.238, 1.2.3.4"}, ip_allowlist=(self.TV,),
+                            trusted_ip_header="CF-Connecting-IP")
+        self.assertEqual(code, 403)
+
+    def test_cidr_allowlist(self):
+        code, body = self.post({"CF-Connecting-IP": self.TV}, ip_allowlist=("52.89.214.0/24",),
+                               trusted_ip_header="CF-Connecting-IP")
+        self.assertEqual((code, body["status"]), (200, "accepted"))
+
+    def test_no_allowlist_ignores_headers(self):
+        code, body = self.post({"X-Forwarded-For": "1.2.3.4", "CF-Connecting-IP": "garbage"})
+        self.assertEqual((code, body["status"]), (200, "accepted"))
 
 
 if __name__ == "__main__":
