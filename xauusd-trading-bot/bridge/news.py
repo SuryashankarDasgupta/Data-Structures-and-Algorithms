@@ -116,7 +116,7 @@ def merge_rows(path: str, new_rows: list[tuple[str, str, str, str]]) -> int:
     rows.sort()
     tmp = path + ".tmp"
     with open(tmp, "w", newline="") as fh:
-        w = csv.writer(fh)
+        w = csv.writer(fh, lineterminator="\n")      # LF, so the committed CSV doesn't churn on Windows
         w.writerow(["date", "event", "description", "time_utc"])
         w.writerows(rows)
     os.replace(tmp, path)

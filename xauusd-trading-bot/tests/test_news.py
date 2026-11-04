@@ -165,6 +165,17 @@ class BridgeNewsTests(unittest.TestCase):
             cal = NewsCalendar.load(path)
             self.assertEqual(len(cal.events), 3)
 
+    def test_merge_rows_writes_lf_line_endings(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "cal.csv")
+            with open(path, "w", newline="") as fh:
+                fh.write("date,event,description\n2026-12-09,FOMC,FOMC rate decision\n")
+            self.assertEqual(merge_rows(path, [("2026-12-04", "NFP", "x", "13:30")]), 1)
+            with open(path, "rb") as fh:
+                raw = fh.read()
+            self.assertNotIn(b"\r", raw)
+            self.assertEqual(raw.count(b"\n"), 3)
+
     def test_sync_pine(self):
         with tempfile.TemporaryDirectory() as d:
             csvp, pinep = os.path.join(d, "c.csv"), os.path.join(d, "s.pine")

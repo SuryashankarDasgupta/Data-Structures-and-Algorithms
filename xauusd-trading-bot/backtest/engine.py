@@ -132,7 +132,13 @@ def event_ahead(index: pd.DatetimeIndex, events) -> np.ndarray:
     return hi > lo
 
 
-def run(df: pd.DataFrame, p: Params | None = None, events=None) -> Result:
+def _utc(ts) -> pd.Timestamp:
+    ts = pd.Timestamp(ts)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts
+
+
+def run(df: pd.DataFrame, p: Params | None = None, events=None, trade_from=None) -> Result:
+    """trade_from: no entry signals before this date (indicators still warm up on earlier bars)."""
     p = p or Params()
     if p.news_mode not in ("off", "block", "tighten", "flat"):
         raise ValueError(f"unknown news_mode {p.news_mode!r}")
@@ -140,6 +146,8 @@ def run(df: pd.DataFrame, p: Params | None = None, events=None) -> Result:
         from .news import load_events
         events = load_events()
     d = compute_signals(df, p)
+    if trade_from is not None:
+        d.loc[d.index < _utc(trade_from), ["long_sig", "short_sig"]] = False
     news_next = event_ahead(d.index, events) if p.news_mode != "off" else np.zeros(len(d), dtype=bool)
     O, H, L, C, A = (d[c].to_numpy(dtype=float) for c in ("open", "high", "low", "close", "atr"))
     up, dn = d["up"].to_numpy(), d["dn"].to_numpy()
@@ -267,7 +275,7 @@ def compute_stats(res: Result) -> dict:
 def rebase(res: Result, start) -> Result:
     """Report from `start` only: equity rescaled to initial_capital at that date, trades entered
     before it dropped. Indicators keep their warm-up on the earlier data."""
-    start = pd.Timestamp(start, tz="UTC") if pd.Timestamp(start).tzinfo is None else pd.Timestamp(start)
+    start = _utc(start)
     eq = res.equity.loc[start:]
     res.equity = eq / eq.iloc[0] * res.params.initial_capital
     res.trades = [t for t in res.trades if t.entry_time >= start]

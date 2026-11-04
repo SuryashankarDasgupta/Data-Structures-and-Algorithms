@@ -9,7 +9,7 @@ def synthetic_xauusd(bars: int = 5000, freq: str = "1h", start_price: float = 20
                      seed: int = 7) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     idx = pd.date_range("2024-01-01", periods=bars * 2, freq=freq, tz="UTC")
-    idx = idx[idx.dayofweek < 5][:bars]             # drop weekends
+    idx = idx[idx.day_of_week < 5][:bars]             # drop weekends
     # regime-switching drift so trends exist, ~0.25% hourly vol
     regime = np.repeat(rng.choice([-1, 0, 1], size=bars // 250 + 1), 250)[:bars]
     rets = rng.normal(regime * 0.0003, 0.0025, size=bars)

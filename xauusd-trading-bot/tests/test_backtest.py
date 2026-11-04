@@ -68,6 +68,16 @@ class RunTests(unittest.TestCase):
         self.assertAlmostEqual(st["return_pct"], st["net_profit"] / st["initial_capital"] * 100, places=1)
         self.assertTrue(all(t.entry_time >= start for t in res.trades))
 
+    def test_fresh_start_account(self):
+        start = self.df.index[len(self.df) // 2]
+        res = run(self.df, trade_from=start)
+        self.assertTrue(res.trades)
+        self.assertTrue(all(t.entry_time > start for t in res.trades))
+        self.assertTrue((res.equity.loc[:start] == res.params.initial_capital).all())
+        st = rebase(res, start).stats
+        self.assertEqual(res.equity.iloc[0], st["initial_capital"])
+        self.assertAlmostEqual(st["final_equity"], st["initial_capital"] + st["net_profit"], places=1)
+
     def test_long_only_by_default(self):
         self.assertTrue(all(t.side == 1 for t in run(self.df).trades))
         self.assertTrue(any(t.side == -1 for t in run(self.df, Params(allow_shorts=True)).trades))

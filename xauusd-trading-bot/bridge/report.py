@@ -1,4 +1,4 @@
-"""Daily review: realized P&L, orders, rejected/failed alerts.
+r"""Daily review: realized P&L, orders, rejected/failed alerts.
 
 Usage: python -m bridge.report [YYYY-MM-DD]     (defaults to today, UTC)
 Schedule with cron, e.g.  5 0 * * *  cd /path && python -m bridge.report $(date -u -d yesterday +\%F)

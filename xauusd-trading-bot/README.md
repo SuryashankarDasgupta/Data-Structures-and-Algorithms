@@ -8,7 +8,7 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
 | **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
 | **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
-| **Tests** | `tests/` | 65 tests: `python -m unittest discover -s tests -t .` |
+| **Tests** | `tests/` | 67 tests: `python -m unittest discover -s tests -t .` |
 
 > **Bottom line:** over 2000–2026 this made **6.4%/yr with a −17.5% worst drawdown** at the default 2% risk per trade
 > (3.7%/yr, −8.8% at 1%).
@@ -81,50 +81,54 @@ each bull run. It's in the market about 48% of the time, so idle cash could also
 
 ### Last 10 years (4 Nov 2016 → 4 Nov 2026), default settings incl. news filter
 
+A fresh $25,000 account opened on 4 Nov 2016 (what a new user would experience). Indicators warm up on daily
+data from 1 Jan 2015; no trades before the start date.
+
 | | 2% risk (default) | 1% risk | Gold buy & hold |
 |---|---|---|---|
-| $25,000 becomes | **$41,710** (+66.8%) | $32,436 (+29.7%) | ~$78,150 (+212.6%) |
-| Annual return | **5.25%** | 2.64% | 12.07% |
-| Max drawdown | **−12.2%** | −6.2% | −26.7% |
-| Trades / win rate | 98 / 40.8% | 98 / 39.8% | – |
-| Profit factor | 1.89 | 1.83 | – |
-| Avg win / avg loss | +$958 / −$350 | +$449 / −$162 | – |
+| $25,000 becomes | **$42,770** (+71.1%) | $32,795 (+31.2%) | ~$78,150 (+212.6%) |
+| Annual return | **5.52%** | 2.75% | 12.07% |
+| Max drawdown | **−12.1%** | −6.2% | −26.7% |
+| Trades / win rate | 99 / 40.4% | 99 / 39.4% | – |
+| Profit factor | 1.90 | 1.82 | – |
+| Avg win / avg loss | +$938 / −$335 | +$443 / −$158 | – |
 | Best / worst trade | +$4,671 / −$1,176 | +$1,846 / −$392 | – |
-| Longest time below a previous high | 916 days | 916 days | – |
+| Longest time below a previous high | 1,329 calendar days (~3.6 years) | 1,329 calendar days | – |
 
 | Year | 2016* | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026* |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Bot (2% risk) | −1.8 | +0.3 | −5.2 | +16.1 | +9.3 | −6.1 | −0.1 | +6.9 | +14.0 | +25.0 | −1.5 |
-| Bot (1% risk) | −1.1 | +1.1 | −2.6 | +10.5 | +5.0 | −2.9 | +0.1 | +3.1 | +6.8 | +10.2 | −2.7 |
+| Bot (2% risk) | −0.9 | +0.5 | −5.2 | +16.2 | +10.1 | −6.2 | +0.3 | +7.0 | +13.5 | +25.7 | −1.5 |
+| Bot (1% risk) | −0.5 | +1.0 | −2.5 | +10.4 | +5.0 | −3.0 | +0.1 | +3.2 | +7.2 | +10.6 | −2.7 |
 | Gold | −11.8 | +13.6 | −2.1 | +18.9 | +24.7 | −3.5 | −0.1 | +13.4 | +27.5 | +64.4 | −6.2 |
 
-\* partial years. The worst losing year was −6.1% at 2% risk (−2.9% at 1%). Gold had an exceptional decade, which a trend system with
+\* partial years. The worst losing year was −6.2% at 2% risk (−3.0% at 1%). Gold had an exceptional decade, which a trend system with
 small, risk-capped positions captures only partly.
 
 ### Profitability and drawdown by period (last 10 years, default 2% risk)
 
-Equity marked at daily closes, $25k start on 4 Nov 2016. "Flat" = no open position, so no gain or loss.
+Equity marked at daily closes, fresh $25k account opened on 4 Nov 2016. "Flat" = no open position, so no gain or loss.
 
 | | Daily | Weekly | Monthly | Yearly |
 |---|---|---|---|---|
 | Periods | 2,514 | 523 | 121 | 11 |
-| **Profitable** | **30.0%** | **34.2%** | **43.8%** | **54.5%** |
-| Losing | 25.2% | 30.6% | 38.0% | 45.5% |
+| **Profitable** | **30.0%** | **34.2%** | **43.8%** | **63.6%** |
+| Losing | 25.2% | 30.6% | 38.0% | 36.4% |
 | Flat (out of market) | 44.8% | 35.2% | 18.2% | 0% |
-| Profitable when in a trade | 54.4% | 52.8% | 53.5% | 54.5% |
-| Average return | +0.02% | +0.10% | +0.44% | +5.2% |
-| Best period | +3.42% | +5.06% | +7.33% | +25.0% |
-| Worst period | −2.47% | −2.59% | −3.26% | −6.14% |
-| Avg drawdown within period | −0.12% | −0.52% | −1.50% | −6.25% |
-| **Worst drawdown within period** | **−2.47%** | **−4.08%** | **−4.32%** | **−9.54%** |
+| Profitable when in a trade | 54.4% | 52.8% | 53.5% | 63.6% |
+| Average return | +0.02% | +0.11% | +0.46% | +5.4% |
+| Best period | +3.55% | +4.81% | +7.18% | +25.8% |
+| Worst period | −2.53% | −2.53% | −3.35% | −6.16% |
+| Avg drawdown within period | −0.12% | −0.52% | −1.48% | −6.15% |
+| **Worst drawdown within period** | **−2.53%** | **−4.17%** | **−4.34%** | **−9.70%** |
 | *Same at 1% risk: profitable* | *29.4%* | *33.3%* | *43.0%* | *63.6%* |
-| *Same at 1% risk: worst drawdown* | *−1.26%* | *−1.68%* | *−2.02%* | *−5.94%* |
+| *Same at 1% risk: worst drawdown* | *−1.28%* | *−1.70%* | *−2.06%* | *−5.92%* |
 | Gold buy & hold: profitable | 53.6% | 56.4% | 57.0% | 54.5% |
 | Gold buy & hold: worst drawdown | −10.8% | −10.8% | −17.6% | −26.7% |
 
-Reproduce with `python -m backtest.run gold_daily.csv --start 2016-11-04 --periods`. Note: `--start` warms the
-indicators up on all earlier data, so the account size and open positions at the start date can differ slightly
-from a run that begins in 2015.
+Reproduce with `python -m backtest.run gold_daily.csv --fresh-start 2016-11-04 --periods` (CSV from 2015 onward).
+`--start 2016-11-04` instead rescales the full-history account to $25k on that date, which gives slightly different
+results (about 5.6%/yr) because position sizes are rounded to whole ounces at a different account size and a
+position can already be open on the start date.
 
 ### The risk dial: you choose the drawdown
 
