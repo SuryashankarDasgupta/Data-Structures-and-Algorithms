@@ -8,7 +8,7 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **Bridge** | `bridge/` | Receives alerts, re-checks risk, places orders and trails the broker stop (paper by default, OANDA optional), journals everything |
 | **Backtester** | `backtest/` | The same rules in Python, run on any OHLC CSV (e.g. a TradingView export) |
 | **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
-| **Tests** | `tests/` | 64 tests: `python -m unittest discover -s tests -t .` |
+| **Tests** | `tests/` | 65 tests: `python -m unittest discover -s tests -t .` |
 
 > **Bottom line:** over 2000–2026 this made **6.4%/yr with a −17.5% worst drawdown** at the default 2% risk per trade
 > (3.7%/yr, −8.8% at 1%).

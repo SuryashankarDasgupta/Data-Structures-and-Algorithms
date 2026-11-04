@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from backtest import indicators as ind
-from backtest.engine import Params, _stop_fill, run
+from backtest.engine import Params, _stop_fill, rebase, run
 from backtest.sample_data import synthetic_xauusd
 
 
@@ -57,6 +57,16 @@ class RunTests(unittest.TestCase):
         self.assertAlmostEqual(st["final_equity"], st["initial_capital"] + st["net_profit"], places=1)
         for t in res.trades:
             self.assertGreaterEqual(t.exit_time, t.entry_time)
+
+    def test_rebased_stats_consistent(self):
+        res = run(self.df)
+        start = res.equity.index[len(res.equity) // 2]
+        st = rebase(res, start).stats
+        self.assertEqual(st["start"], str(start.date()))
+        self.assertAlmostEqual(res.equity.iloc[0], st["initial_capital"])
+        self.assertAlmostEqual(st["final_equity"], st["initial_capital"] + st["net_profit"], places=1)
+        self.assertAlmostEqual(st["return_pct"], st["net_profit"] / st["initial_capital"] * 100, places=1)
+        self.assertTrue(all(t.entry_time >= start for t in res.trades))
 
     def test_long_only_by_default(self):
         self.assertTrue(all(t.side == 1 for t in run(self.df).trades))

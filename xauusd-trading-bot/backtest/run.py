@@ -5,10 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 
-import pandas as pd
 from dataclasses import fields
 
-from .engine import Params, load_csv, period_stats, run
+from .engine import Params, load_csv, period_stats, rebase, run
 from .sample_data import synthetic_xauusd
 
 
@@ -38,12 +37,7 @@ def main(argv=None) -> None:
     overrides = {f.name: getattr(args, f.name) for f in fields(Params) if getattr(args, f.name) is not None}
     res = run(df, Params(**overrides))
     if args.start:
-        from .engine import compute_stats
-        start = pd.Timestamp(args.start, tz="UTC")
-        eq = res.equity.loc[start:]
-        res.equity = eq / eq.iloc[0] * res.params.initial_capital
-        res.trades = [t for t in res.trades if t.entry_time >= start]
-        res.stats = compute_stats(res)
+        rebase(res, args.start)
     print(json.dumps(res.stats, indent=2))
     if args.periods:
         print()

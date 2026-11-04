@@ -249,8 +249,9 @@ def compute_stats(res: Result) -> dict:
         "end": str(eq.index[-1].date()) if len(eq) else "",
         "initial_capital": p.initial_capital,
         "final_equity": round(final, 2),
-        "net_profit": round(float(pnls.sum()), 2),
-        "return_pct": round(float(pnls.sum()) / p.initial_capital * 100, 2),
+        # from the equity curve, not the trade list: after rebase() trade P&Ls are in unscaled dollars
+        "net_profit": round(final - p.initial_capital, 2),
+        "return_pct": round((final / p.initial_capital - 1) * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
         "max_drawdown_pct": round(dd * 100, 2),
         "return_to_drawdown": round(cagr / abs(dd), 2) if dd < 0 else float("inf"),
@@ -261,6 +262,17 @@ def compute_stats(res: Result) -> dict:
         "time_in_market_pct": round(in_mkt * 100, 1),
         "sharpe_daily": round(sharpe, 2),
     }
+
+
+def rebase(res: Result, start) -> Result:
+    """Report from `start` only: equity rescaled to initial_capital at that date, trades entered
+    before it dropped. Indicators keep their warm-up on the earlier data."""
+    start = pd.Timestamp(start, tz="UTC") if pd.Timestamp(start).tzinfo is None else pd.Timestamp(start)
+    eq = res.equity.loc[start:]
+    res.equity = eq / eq.iloc[0] * res.params.initial_capital
+    res.trades = [t for t in res.trades if t.entry_time >= start]
+    res.stats = compute_stats(res)
+    return res
 
 
 PERIODS = {"daily": "1D", "weekly": "W-FRI", "monthly": "ME", "yearly": "YE"}
