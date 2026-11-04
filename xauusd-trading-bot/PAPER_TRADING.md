@@ -65,11 +65,15 @@ so `queue_depth` stays 0 and `recent_results` stays empty. With `EXECUTION_MODE=
 bridge answers `202 queued` at once. `queue_depth` then shows orders waiting for the background worker, and
 `recent_results` the last 20 executed ones (time, alert key, status, detail).
 
-Daily summary (realized P&L, orders, rejected alerts) for a UTC date:
+Daily summary (realized P&L, orders, rejected alerts), plus the status above with `-Status`:
 
 ```powershell
-$env:JOURNAL_PATH = "runtime\journal.sqlite3"; .venv\Scripts\python -m bridge.report 2026-11-05
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\report.ps1 -Yesterday -Status
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\report.ps1 -Date 2026-11-05
 ```
+
+Days are **UTC** days, because the bridge journals by UTC. The daily-close alerts at ~03:30 IST belong to the
+previous UTC day, so in the morning use `-Yesterday`. Without a date the script reports today (UTC).
 
 ## Kill switch
 
@@ -84,7 +88,7 @@ Remove-Item runtime\KILL_SWITCH                   # off
 
 ## Weekly checks
 
-1. **Bridge vs TradingView:** compare the bridge journal (`bridge.report` for each day with activity) with the
+1. **Bridge vs TradingView:** compare the bridge journal (`scripts\report.ps1 -Date <day>` for each day with activity) with the
    trades in TradingView's Strategy Tester → *List of trades*. Every TradingView entry and exit should appear in
    the journal as `accepted`. Missing ones mean the bridge or tunnel was down, or the alert's URL was stale.
    Rejected ones show the reason (news guard, stale alert, risk limit). If they drift apart, close the paper
