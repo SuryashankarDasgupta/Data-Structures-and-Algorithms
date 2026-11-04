@@ -27,7 +27,7 @@ class Params:
     atr_len: int = 14
     init_atr: float = 2.0
     trail_atr: float = 2.5
-    risk_pct: float = 1.0
+    risk_pct: float = 2.0
     max_lev: float = 1.0
     qty_step: float = 1.0
     initial_capital: float = 25_000.0

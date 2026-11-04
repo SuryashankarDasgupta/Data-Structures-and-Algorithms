@@ -85,11 +85,11 @@ class RunTests(unittest.TestCase):
         self.assertGreater(last.exit_price, 1400)
 
     def test_risk_per_trade_respected(self):
-        res = run(self.df, Params(risk_pct=1.0))
+        res = run(self.df)                                   # default 2% risk
         for t in res.trades:
             if t.exit_reason == "initial_stop":
-                # loss on a clean stop ~= 1% of equity (+ commission, gaps)
-                self.assertLess(-t.pnl, 0.02 * res.equity.max())
+                # loss on a clean stop ~= 2% of equity (+ commission, gaps)
+                self.assertLess(-t.pnl, 0.035 * res.equity.max())
 
 
 if __name__ == "__main__":

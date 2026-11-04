@@ -110,10 +110,10 @@ class EngineTests(Base):
         self.assertEqual(self.engine.handle(p).status, "rejected")
 
     def test_qty_capped_by_risk(self):
-        # 1.5% of 10k = 150 USD risk; sl 10 -> max 15 oz even if alert asks for 50
+        # 2.5% of 10k = 250 USD risk; sl 10 -> max 25 oz even if alert asks for 50
         r = self.engine.handle(entry(qty=50))
         self.assertEqual(r.status, "accepted")
-        self.assertEqual(self.broker.position("XAUUSD").units, 15)
+        self.assertEqual(self.broker.position("XAUUSD").units, 25)
         self.assertIn("capped", r.detail)
 
     def test_qty_capped_by_max_units(self):

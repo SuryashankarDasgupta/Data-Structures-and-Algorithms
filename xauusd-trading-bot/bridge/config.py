@@ -22,9 +22,9 @@ class Config:
 
     # Risk limits enforced by the bridge (independent of the Pine script)
     max_units: int = 100               # ounces
-    max_risk_pct: float = 1.5          # max % of balance at risk per trade (qty * sl_dist)
+    max_risk_pct: float = 2.5          # max % of balance at risk per trade (qty * sl_dist)
     max_leverage: float = 1.0          # max notional (units * price) as a multiple of balance
-    max_daily_loss_pct: float = 3.0    # stop opening trades after this % drawdown from day start
+    max_daily_loss_pct: float = 5.0    # stop opening trades after this % drawdown from day start
     max_trades_per_day: int = 4
     max_signal_delay_s: int = 120      # reject alerts older than bar close + this
     kill_switch_file: str = "KILL_SWITCH"
@@ -62,9 +62,9 @@ class Config:
             broker=_env("BROKER", "paper").lower(),
             allowed_symbols=tup("ALLOWED_SYMBOLS", "XAUUSD"),
             max_units=int(_env("MAX_UNITS", "100")),
-            max_risk_pct=float(_env("MAX_RISK_PCT", "1.5")),
+            max_risk_pct=float(_env("MAX_RISK_PCT", "2.5")),
             max_leverage=float(_env("MAX_LEVERAGE", "1.0")),
-            max_daily_loss_pct=float(_env("MAX_DAILY_LOSS_PCT", "3.0")),
+            max_daily_loss_pct=float(_env("MAX_DAILY_LOSS_PCT", "5.0")),
             max_trades_per_day=int(_env("MAX_TRADES_PER_DAY", "4")),
             max_signal_delay_s=int(_env("MAX_SIGNAL_DELAY_S", "120")),
             kill_switch_file=_env("KILL_SWITCH_FILE", "KILL_SWITCH"),

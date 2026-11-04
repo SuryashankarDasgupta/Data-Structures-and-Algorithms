@@ -10,7 +10,8 @@ A research-backed, risk-managed gold (XAUUSD) trend-following system:
 | **News calendar** | `data/high_impact_usd.csv` | FOMC, NFP and CPI release dates 2015 → latest schedule (official sources) |
 | **Tests** | `tests/` | 64 tests: `python -m unittest discover -s tests -t .` |
 
-> **Bottom line:** over 2000–2026 this made **3.7%/yr with a −8.8% worst drawdown** at 1% risk per trade.
+> **Bottom line:** over 2000–2026 this made **6.4%/yr with a −17.5% worst drawdown** at the default 2% risk per trade
+> (3.7%/yr, −8.8% at 1%).
 > Buying and holding gold made 10.9%/yr but fell **−44%** on the way. The bot earns about **1.7× more return per unit of
 > drawdown**, but it does **not** beat buy-and-hold on raw return. Nothing here turns $70 into $13k.
 
@@ -24,7 +25,7 @@ Use on a **daily** chart (`OANDA:XAUUSD`, 1D).
 * **Initial stop:** signal close − 2 × ATR(14)
 * **Trailing stop:** highest high since entry − 2.5 × ATR(14), recomputed each daily close, **only ever moves up**
 * **Trend exit:** EMA20 falls below EMA200 → sell at the next open
-* **Size:** `equity × risk% ÷ (2 × ATR)` ounces, capped at 1× equity notional (no leverage), whole ounces
+* **Size:** `equity × 2% ÷ (2 × ATR)` ounces (risk % adjustable), capped at 1× equity notional (no leverage), whole ounces
 * **Shorts:** off by default (they lowered returns and raised drawdown on gold, see below)
 * **High-impact news:** no new entry when an FOMC decision, NFP or CPI release falls on the next trading session (see [News](#high-impact-news))
 
@@ -66,54 +67,58 @@ Long-only beat long+short in both periods. I picked the best setting on the tuni
 result was in line with its neighbours, so it isn't a lucky outlier. A "drawdown brake" (halving risk after a 5–10% drawdown)
 did **not** improve results and was left out.
 
-## Results with default settings (1% risk, $25k start)
+## Results with default settings (2% risk, $25k start)
 
 | Period | Bot annual return | Bot max DD | Profit factor | Trades | Gold annual return | Gold max DD |
 |---|---|---|---|---|---|---|
-| 2000–2015 (tuning) | 4.2% | −7.8% | 1.81 | 169 | 9.2% | −44.4% |
-| 2016–2026 (unseen) | 2.6% | −6.2% | 1.84 | 99 | 13.1% | −26.7% |
-| 2000–2026 | 3.7% | −8.8% | 1.87 | 277 | 10.9% | −44.4% |
+| 2000–2015 (tuning) | 6.9% | −15.1% | 1.67 | 169 | 9.2% | −44.4% |
+| 2016–2026 (unseen) | 5.2% | −12.0% | 1.92 | 99 | 13.1% | −26.7% |
+| 2000–2026 | 6.4% | −17.5% | 1.78 | 277 | 10.9% | −44.4% |
 
-Year by year (bot % vs gold %): 2013 **−2.0 vs −28**, 2014 −1.6 vs −1, 2015 −1.9 vs −10, 2019 +10.3 vs +19,
-2020 +6.4 vs +25, 2024 +6.8 vs +27, 2025 +11.8 vs +64. The bot keeps losses small in bear years and captures part of
+Year by year (bot % vs gold %): 2013 **−4.2 vs −28**, 2014 −2.9 vs −1, 2015 −3.9 vs −10, 2019 +16.5 vs +19,
+2020 +9.9 vs +25, 2024 +14.1 vs +27, 2025 +27.2 vs +64. 8 losing years out of 27, the worst −6.5% (2001). The bot keeps losses small in bear years and captures part of
 each bull run. It's in the market about 48% of the time, so idle cash could also earn interest.
 
 ### Last 10 years (4 Nov 2016 → 4 Nov 2026), default settings incl. news filter
 
-| | 1% risk (default) | 2% risk | Gold buy & hold |
+| | 2% risk (default) | 1% risk | Gold buy & hold |
 |---|---|---|---|
-| $25,000 becomes | **$32,436** (+29.7%) | $41,710 (+66.8%) | ~$78,150 (+212.6%) |
-| Annual return | 2.64% | 5.25% | 12.07% |
-| Max drawdown | **−6.2%** | −12.2% | −26.7% |
-| Trades / win rate | 98 / 39.8% | 98 / 40.8% | – |
-| Profit factor | 1.83 | 1.89 | – |
-| Avg win / avg loss | +$449 / −$162 | +$958 / −$350 | – |
-| Best / worst trade | +$1,846 / −$392 | +$4,671 / −$1,176 | – |
+| $25,000 becomes | **$41,710** (+66.8%) | $32,436 (+29.7%) | ~$78,150 (+212.6%) |
+| Annual return | **5.25%** | 2.64% | 12.07% |
+| Max drawdown | **−12.2%** | −6.2% | −26.7% |
+| Trades / win rate | 98 / 40.8% | 98 / 39.8% | – |
+| Profit factor | 1.89 | 1.83 | – |
+| Avg win / avg loss | +$958 / −$350 | +$449 / −$162 | – |
+| Best / worst trade | +$4,671 / −$1,176 | +$1,846 / −$392 | – |
+| Longest time below a previous high | 916 days | 916 days | – |
 
 | Year | 2016* | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026* |
 |---|---|---|---|---|---|---|---|---|---|---|---|
+| Bot (2% risk) | −1.8 | +0.3 | −5.2 | +16.1 | +9.3 | −6.1 | −0.1 | +6.9 | +14.0 | +25.0 | −1.5 |
 | Bot (1% risk) | −1.1 | +1.1 | −2.6 | +10.5 | +5.0 | −2.9 | +0.1 | +3.1 | +6.8 | +10.2 | −2.7 |
 | Gold | −11.8 | +13.6 | −2.1 | +18.9 | +24.7 | −3.5 | −0.1 | +13.4 | +27.5 | +64.4 | −6.2 |
 
-\* partial years. The worst losing year was −2.9%. Gold had an exceptional decade, which a trend system with
+\* partial years. The worst losing year was −6.1% at 2% risk (−2.9% at 1%). Gold had an exceptional decade, which a trend system with
 small, risk-capped positions captures only partly.
 
-### Profitability and drawdown by period (last 10 years, default settings)
+### Profitability and drawdown by period (last 10 years, default 2% risk)
 
 Equity marked at daily closes, $25k start on 4 Nov 2016. "Flat" = no open position, so no gain or loss.
 
 | | Daily | Weekly | Monthly | Yearly |
 |---|---|---|---|---|
 | Periods | 2,514 | 523 | 121 | 11 |
-| **Profitable** | **29.4%** | **33.3%** | **43.0%** | **63.6%** |
-| Losing | 24.8% | 30.4% | 38.0% | 36.4% |
-| Flat (out of market) | 45.8% | 36.3% | 19.0% | 0% |
-| Profitable when in a trade | 54.3% | 52.3% | 53.1% | 63.6% |
-| Average return | +0.01% | +0.05% | +0.22% | +2.5% |
-| Best period | +2.25% | +2.62% | +4.76% | +10.49% |
-| Worst period | −1.26% | −1.29% | −1.83% | −2.91% |
-| Avg drawdown within period | −0.06% | −0.26% | −0.76% | −3.34% |
-| **Worst drawdown within period** | **−1.26%** | **−1.68%** | **−2.02%** | **−5.94%** |
+| **Profitable** | **30.0%** | **34.2%** | **43.8%** | **54.5%** |
+| Losing | 25.2% | 30.6% | 38.0% | 45.5% |
+| Flat (out of market) | 44.8% | 35.2% | 18.2% | 0% |
+| Profitable when in a trade | 54.4% | 52.8% | 53.5% | 54.5% |
+| Average return | +0.02% | +0.10% | +0.44% | +5.2% |
+| Best period | +3.42% | +5.06% | +7.33% | +25.0% |
+| Worst period | −2.47% | −2.59% | −3.26% | −6.14% |
+| Avg drawdown within period | −0.12% | −0.52% | −1.50% | −6.25% |
+| **Worst drawdown within period** | **−2.47%** | **−4.08%** | **−4.32%** | **−9.54%** |
+| *Same at 1% risk: profitable* | *29.4%* | *33.3%* | *43.0%* | *63.6%* |
+| *Same at 1% risk: worst drawdown* | *−1.26%* | *−1.68%* | *−2.02%* | *−5.94%* |
 | Gold buy & hold: profitable | 53.6% | 56.4% | 57.0% | 54.5% |
 | Gold buy & hold: worst drawdown | −10.8% | −10.8% | −17.6% | −26.7% |
 
@@ -128,10 +133,13 @@ Return and drawdown scale together. Pick the drawdown you can live with:
 | Risk per trade | Annual return | Max drawdown (2000–2026) |
 |---|---|---|
 | 0.5% | 1.8% | −4.2% |
-| **1.0% (default)** | **3.7%** | **−8.8%** |
-| 2.0% | 6.4% | −17.5% |
+| 1.0% | 3.7% | −8.8% |
+| **2.0% (default)** | **6.4%** | **−17.5%** |
+| 2.5% | 6.9% | −19.1% |
+| 3.0% | 7.1% | −19.7% |
 
-Expect live drawdowns to be **worse** than any backtest. Settings above 2% aren't recommended.
+Above 2% the no-leverage cap (position value ≤ account equity) starts limiting size, so extra risk buys little extra
+return. Expect live drawdowns to be **worse** than any backtest.
 
 ## High-impact news
 
@@ -157,7 +165,7 @@ the day. That matters for stops, much less for a strategy holding for weeks.
 
 **Options** (*News handling* input in Pine, `news_mode` in the backtester):
 
-| Mode | What it does | 10-yr annual return | Max DD | Trades |
+| Mode (at 1% risk) | What it does | 10-yr annual return | Max DD | Trades |
 |---|---|---|---|---|
 | Off | ignore news | 2.77% | −6.2% | 100 |
 | **Block entries (default)** | no new entry if a release is on the next session | 2.64% | −6.2% | 98 |
@@ -188,8 +196,8 @@ dates in the Pine input *Extra event dates* (`YYYYMMDD,YYYYMMDD`).
 
 1. Open **`OANDA:XAUUSD`**, timeframe **1D**.
 2. Pine Editor → paste `pine/xauusd_daily_trend.pine` → **Add to chart** → **Strategy Tester**.
-3. Change *Properties → Initial capital* to your account size. At gold ≈ $4,000 with daily-ATR stops, 1% risk needs
-   roughly **$12k+** to trade even 1 oz. Below that, either use a broker that allows fractional ounces (set
+3. Change *Properties → Initial capital* to your account size. At gold ≈ $4,000 with daily-ATR stops, 2% risk needs
+   roughly **$6–8k+** to trade even 1 oz. Below that, either use a broker that allows fractional ounces (set
    *Quantity step*) or accept that it will skip trades.
 
 ## 2. Paper trade with webhooks
