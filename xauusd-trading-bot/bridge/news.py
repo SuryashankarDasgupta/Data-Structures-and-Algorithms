@@ -144,7 +144,7 @@ def sync_pine(csv_path: str = DEFAULT_PATH, pine_path: str = PINE_PATH) -> dict[
             raise ValueError(f"{const} constant not found in {pine_path}")
         joined = ",".join(sorted(set(vals)))
         src = pattern.sub(lambda m: f'{m.group(1)}"{joined}"', src)
-    with open(pine_path, "w") as fh:
+    with open(pine_path, "w", newline="\n") as fh:    # LF on every OS (see .gitattributes)
         fh.write(src)
     return {k: len(set(v)) for k, v in dates.items()}
 

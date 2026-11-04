@@ -5,3 +5,6 @@ KILL_SWITCH
 __pycache__/
 *.csv
 !data/high_impact_usd.csv
+.venv/
+logs/
+runtime/

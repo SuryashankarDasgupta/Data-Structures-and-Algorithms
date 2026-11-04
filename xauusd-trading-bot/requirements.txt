@@ -2,3 +2,4 @@
 requests>=2.31     # OANDA adapter
 pandas>=2.0        # backtester
 numpy>=1.24        # backtester
+tzdata; sys_platform == "win32"   # IANA time zones for zoneinfo on Windows

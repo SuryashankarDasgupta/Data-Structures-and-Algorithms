@@ -208,6 +208,8 @@ dates in the Pine input *Extra event dates* (`YYYYMMDD,YYYYMMDD`).
 
 ## 2. Paper trade with webhooks
 
+On Windows, follow [PAPER_TRADING.md](PAPER_TRADING.md) (start scripts, daily routine, weekly checks).
+
 ```bash
 cd xauusd-trading-bot
 cp .env.example .env            # set WEBHOOK_SECRET (>=16 chars)

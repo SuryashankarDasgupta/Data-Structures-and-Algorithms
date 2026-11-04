@@ -189,6 +189,8 @@ class BridgeNewsTests(unittest.TestCase):
             self.assertIn('FOMC_DATES = "20260128"', out)
             self.assertIn('NFP_DATES  = "20260109"', out)
             self.assertIn('CPI_DATES  = "20260113"', out)
+            with open(pinep, "rb") as fh:
+                self.assertNotIn(b"\r", fh.read())
 
 
 if __name__ == "__main__":
