@@ -74,6 +74,7 @@ class Config:
     entry_mode: str = "breakout"       # breakout (20-day high) | trend (EMA20/200)
     breakout_len: int = 20
     macd_filter: bool = True           # MACD(12/26/9) confirmation for new scanner entries
+    resistance_entries: bool = True    # extra entries on a break of a 2-touch resistance (breakout mode)
     nonfx_feed: str = "auto"           # data for gold/forex: oanda | yahoo (paper only) | auto
     fx_shorts: bool = True
     crypto_shorts: bool = False
@@ -122,6 +123,7 @@ class Config:
             entry_mode=_env("ENTRY_MODE", "breakout").strip().lower(),
             breakout_len=int(_env("BREAKOUT_LEN", "20")),
             macd_filter=_env("MACD_FILTER", "on").strip().lower() in ("1", "on", "true", "yes"),
+            resistance_entries=_env("RESISTANCE_ENTRIES", "on").strip().lower() in ("1", "on", "true", "yes"),
             nonfx_feed=_env("NONFX_FEED", "auto").strip().lower(),
             fx_shorts=_env("FX_SHORTS", "on").strip().lower() in ("1", "on", "true", "yes"),
             crypto_shorts=_env("CRYPTO_SHORTS", "off").strip().lower() in ("1", "on", "true", "yes"),

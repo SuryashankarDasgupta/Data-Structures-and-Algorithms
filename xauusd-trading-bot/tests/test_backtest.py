@@ -144,3 +144,29 @@ class BreakoutModeTests(unittest.TestCase):
     def test_unknown_entry_mode(self):
         with self.assertRaises(ValueError):
             run(synthetic_xauusd(400, freq="1D"), Params(entry_mode="magic"))
+
+
+class ResistancePatternTests(unittest.TestCase):
+    def test_no_lookahead(self):
+        """Signals up to bar i must not change when later bars are added."""
+        from backtest.patterns import resistance_breaks
+        df = synthetic_xauusd(900, freq="1D", seed=5)
+        atr = ind.atr(df, 14)
+        full = resistance_breaks(df, atr)
+        for cut in (300, 500, 700):
+            part = resistance_breaks(df.iloc[:cut], atr.iloc[:cut])
+            self.assertTrue((part == full.iloc[:cut]).all(), f"signal changed at cut {cut}")
+        self.assertGreater(full.sum(), 0)
+
+    def test_double_touch_level_break(self):
+        from backtest.patterns import resistance_breaks
+        idx = pd.date_range("2024-01-01", periods=40, freq="1D", tz="UTC")
+        # two swing highs at ~110 (bars 8 and 20), then a close above 110 at bar 32
+        close = np.array([100.0] * 40)
+        close[5:12] = [104, 107, 109, 110, 109, 107, 104]
+        close[17:24] = [104, 107, 109, 110.2, 109, 107, 104]
+        close[30:34] = [106, 108, 111, 112]
+        df = pd.DataFrame({"open": close, "high": close + 0.1, "low": close - 0.1, "close": close}, index=idx)
+        sig = resistance_breaks(df, pd.Series(2.0, index=idx), pivot=3, tol_atr=0.5)
+        self.assertTrue(sig.iloc[32])
+        self.assertFalse(sig.iloc[:32].any())

@@ -232,7 +232,7 @@ class ReplayParityTest(unittest.TestCase):
         bars = synthetic_xauusd(1100, freq="1D", start_price=30000.0, seed=11)
         cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0, max_trades_per_day=100,
                      max_daily_loss_pct=100, kill_switch_file="/nonexistent/KILL", news_block_hours=0,
-                     entry_mode=mode, macd_filter=macd)
+                     entry_mode=mode, macd_filter=macd, resistance_entries=True)
         journal = Journal()
         broker = PaperBroker(25_000, spread=0.0)
         broker.half_spread = lambda symbol, price: 0.0      # fill exactly at the signal close, like the rules
@@ -253,7 +253,8 @@ class ReplayParityTest(unittest.TestCase):
         journal.close()
 
         res = run_portfolio({"BTCUSD": bars}, PortfolioParams(risk_pct=1.0, news_mode="off", max_position_lev=1.0,
-                                                              entry_mode=mode, macd_filter=macd),
+                                                              entry_mode=mode, macd_filter=macd,
+                                                              resistance_entries=True),
                             {"BTCUSD": default_spec("BTCUSD")})
         bt = [t for t in res.trades if t.exit_reason != "end_of_data"]
         # backtest fills at the open of the bar AFTER the live signal bar

@@ -1,6 +1,7 @@
 """The daily rules, evaluated on live completed bars. Mirrors backtest/portfolio.py exactly:
 
-  entry (breakout, default): close above the highest high of the previous `breakout_len` bars
+  entry (breakout, default): close above the highest high of the previous `breakout_len` bars, or above a
+                             resistance touched by >= 2 swing highs; confirmed by MACD above its signal line
   entry (trend)            : EMA(fast) > EMA(slow) and close > EMA(fast)
                              (mirror for shorts where allowed; no new entry before USD news for gold/forex)
   stop  : signal close -/+ init_atr x ATR, then trailed at (extreme since the fill bar) -/+ trail_atr x ATR
@@ -17,12 +18,17 @@ import pandas as pd
 
 from backtest import indicators as ind
 from backtest.markets import MarketSpec
+from backtest.patterns import resistance_breaks
 
 
 @dataclass
 class Rules:
     entry_mode: str = "breakout"       # breakout | trend
     breakout_len: int = 20
+    resistance_entries: bool = True    # also enter on a break of a resistance touched by >= 2 swing highs
+    res_pivot: int = 3
+    res_tol_atr: float = 0.5
+    res_lookback: int = 150
     macd_filter: bool = True           # new entries need MACD(12/26/9) on the trade's side of its signal line
     macd_fast: int = 12
     macd_slow: int = 26
@@ -103,6 +109,8 @@ def decide(bars: pd.DataFrame, spec: MarketSpec, r: Rules, state: Optional[Posit
     if breakout:
         prior = d.iloc[-1 - r.breakout_len:-1]
         long_sig = bool(last.close > prior.high.max())
+        if r.resistance_entries and not long_sig:
+            long_sig = bool(resistance_breaks(d, d["atr"], r.res_pivot, r.res_tol_atr, r.res_lookback).iloc[-1])
         short_sig = bool(spec.allow_shorts and last.close < prior.low.min())
     else:
         long_sig = bool(up and last.close > last.ema_f)

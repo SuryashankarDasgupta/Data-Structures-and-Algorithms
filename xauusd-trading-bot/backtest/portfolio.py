@@ -27,6 +27,7 @@ import pandas as pd
 
 from . import indicators as ind
 from .engine import _stop_fill, event_ahead, load_csv
+from .patterns import resistance_breaks
 from .markets import CRYPTO, FX, FX_CROSSES, FX_MAJORS, METALS, MarketSpec, default_spec  # noqa: F401
 
 @dataclass
@@ -37,6 +38,12 @@ class PortfolioParams:
     breakout_len: int = 20
     # MACD confirmation for new entries: long only if MACD(fast, slow) > its signal line (short: below).
     # Improved tuning and unseen results in 6 of 8 MACD settings tested (Nov 2026); standard 12/26/9 used.
+    # Extra breakout entries: close above a resistance touched by >= 2 swing highs (backtest/patterns.py).
+    # Breakout mode, longs only. Improved tuning and unseen results in 27 of 27 settings tested (Nov 2026).
+    resistance_entries: bool = True
+    res_pivot: int = 3
+    res_tol_atr: float = 0.5
+    res_lookback: int = 150
     macd_filter: bool = True
     macd_fast: int = 12
     macd_slow: int = 26
@@ -101,6 +108,8 @@ def _prepare(df: pd.DataFrame, spec: MarketSpec, p: PortfolioParams, events) -> 
     d["atr"] = ind.atr(d, p.atr_len)
     if p.entry_mode == "breakout":
         d["long_sig"] = d.close > d.high.rolling(p.breakout_len).max().shift()
+        if p.resistance_entries:
+            d["long_sig"] = d["long_sig"] | resistance_breaks(d, d["atr"], p.res_pivot, p.res_tol_atr, p.res_lookback)
         d["short_sig"] = (d.close < d.low.rolling(p.breakout_len).min().shift()) if spec.allow_shorts else False
         d["up"] = False                 # no trend-filter exit: positions leave by the trailing stop only
         d["dn"] = False
