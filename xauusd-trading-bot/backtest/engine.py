@@ -24,6 +24,10 @@ class Params:
     # trend (EMA20/200, default for gold alone: better over 2000-2026) | breakout (20-day high, stop-only exit;
     # the default of the multi-market portfolio/scanner, where it beat trend on tuning and unseen data)
     entry_mode: str = "trend"
+    macd_filter: bool = False          # MACD(12/26/9) > signal confirmation (neutral on gold, so off here)
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
     breakout_len: int = 20
     fast_len: int = 20
     slow_len: int = 200
@@ -112,6 +116,12 @@ def compute_signals(df: pd.DataFrame, p: Params) -> pd.DataFrame:
         d["short_sig"] = (d.dn & (d.close < d.ema_f)) if p.allow_shorts else False
     else:
         raise ValueError(f"unknown entry_mode {p.entry_mode!r}")
+    if p.macd_filter:
+        m = ind.ema(d.close, p.macd_fast) - ind.ema(d.close, p.macd_slow)
+        sig = ind.ema(m, p.macd_signal)
+        d["long_sig"] = d["long_sig"] & (m > sig)
+        if p.allow_shorts:
+            d["short_sig"] = d["short_sig"] & (m < sig)
     warmup = max(p.slow_len, p.atr_len)
     d.iloc[:warmup, d.columns.get_indexer(["long_sig", "short_sig"])] = False
     return d

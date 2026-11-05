@@ -10,11 +10,11 @@ A research-backed, risk-managed daily trend-following system. It started as a go
 | **Bridge** | `bridge/` | Receives alerts / scanner signals, re-checks risk, places orders (paper by default, OANDA optional), journals everything |
 | **Backtesters** | `backtest/` | Single-market (`backtest.run`) and multi-market portfolio (`backtest.portfolio_run`) with the same rules |
 | **Data** | `backtest/download.py`, `data/high_impact_usd.csv` | 20+ years of daily prices (forex closes repaired); FOMC/NFP/CPI calendar |
-| **Tests** | `tests/` | 106 tests: `python -m unittest discover -s tests -t .` |
+| **Tests** | `tests/` | 107 tests: `python -m unittest discover -s tests -t .` |
 
 > **Bottom line (20-year backtest, Nov 2006 → Nov 2026, $25k start, default 1% risk per position, 20-day breakout
-> entry):** gold + BTC + ETH turned **$25,000 into $133,911: 8.8%/yr with a −8.3% worst drawdown**, profitable in
-> 17 of 21 calendar years, average **+0.64R per trade**, 50% winners. At 2% risk: $589,968, 17.1%/yr, −16.0%.
+> entry confirmed by MACD):** gold + BTC + ETH turned **$25,000 into $134,077: 8.8%/yr with a −8.1% worst drawdown**,
+> profitable in 17 of 21 calendar years, average **+0.66R per trade**, 51% winners. At 2% risk: $591,985, 17.2%/yr, −15.6%.
 > (The earlier EMA-trend entry: 9.5%/yr, −10.5%, +0.46R per trade.) Gold alone at 2% risk: 5.4%/yr, −17.7%.
 > **Forex lost heavily after 2016** (−5.5%/yr, −57% drawdown) and is off by default. Crypto history only starts in 2014-2017, so the
 > first 8 years are gold only, and most of the crypto profit came from the 2016-2021 bull markets.
@@ -64,6 +64,16 @@ systems mostly fail to beat buy-and-hold; FOMC studies mostly find reversals, no
 | Exit tweaks | breakeven at 1R, 3R/5R targets, 2.0-3.5 ATR trails | no consistent gain, results flip between markets | ❌ |
 | Two strategies at once | trend + Turtle on the same market | no better at equal risk; needs two positions per market | ❌ |
 
+**Indicator filters (TradingView-style), tested on top of the breakout:** RSI(14) above 50/60 or below 70/80,
+Bollinger Bands (close above the upper band, squeeze, no squeeze), EMA/SMA filters (close above EMA200, EMA20 > EMA50,
+SMA50 > SMA200, close above SMA50), MACD (above signal, above zero), ADX (above/below 20/25), Stochastic, volatility
+regime, and indicator exits (close below EMA20/SMA50/Bollinger middle, RSI < 40, MACD cross). Of 25 rules, only
+**MACD above its signal line** improved both the tuning and the unseen period, and 6 of 8 nearby MACD settings did
+too, so it is now on by default (`MACD_FILTER=on`, standard 12/26/9). The gain is modest: same return, slightly smaller
+drawdown, profit factor 2.48 → 2.65, longest time below a high ~3.1 → ~1.6 years. With 25 rules tested, one could pass
+by luck; the neighbour check makes that less likely, not impossible. RSI > 50 changes nothing (a 20-day breakout
+almost always has RSI above 50); RSI < 70, Bollinger squeezes, ADX and Stochastic filters made results worse.
+
 On **gold alone** the trend entry still did better over 2000-2026, so the gold TradingView script keeps *Trend* as
 its default (Breakout is an input). The breakout default applies to the multi-market portfolio and scanner.
 
@@ -73,7 +83,9 @@ its default (Breakout is an input). The breakout default applies to the multi-ma
 
 | Portfolio | Entry | Risk/position | $25k becomes | Annual | Max DD | Return/DD | Sharpe | Trades | Win | Avg per trade | Worst trade |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **Gold + BTC + ETH (default)** | **breakout** | **1%** | **$133,911** | **8.8%** | **−8.3%** | **1.05** | 1.31 | 274 | 50% | **+0.64R** | −1.54R |
+| **Gold + BTC + ETH (default)** | **breakout + MACD** | **1%** | **$134,077** | **8.8%** | **−8.1%** | **1.08** | | 264 | 51% | **+0.66R** | −1.54R |
+| Gold + BTC + ETH | breakout + MACD | 2% | $591,985 | 17.2% | −15.6% | 1.10 | | 264 | 51% | +0.66R | −1.54R |
+| Gold + BTC + ETH | breakout | 1% | $133,911 | 8.8% | −8.3% | 1.05 | 1.31 | 274 | 50% | +0.64R | −1.54R |
 | Gold + BTC + ETH | breakout | 2% | $589,968 | 17.1% | −16.0% | 1.07 | 1.32 | 274 | 50% | +0.64R | −1.54R |
 | Gold + BTC + ETH | trend | 1% | $154,062 | 9.5% | −10.5% | 0.91 | 1.27 | 419 | 44% | +0.46R | −2.05R |
 | Gold + BTC + ETH | trend | 2% | $712,564 | 18.2% | −20.0% | 0.91 | 1.26 | 419 | 44% | +0.46R | −2.05R |
@@ -81,31 +93,31 @@ its default (Breakout is an input). The breakout default applies to the multi-ma
 | All 21 markets (forex + 8 coins + gold) | trend | 1% | $121,393 | 8.2% | −43.4% | 0.19 | 0.62 | 1,663 | 37% | | |
 | Forex only (12 pairs) | trend | 1% | $22,308 | −0.6% | −56.6% | −0.01 | 0.03 | 1,532 | 36% | | |
 
-(R = the amount risked on a trade. Average win +2.0R, average loss −0.73R with the breakout entry.)
+(R = the amount risked on a trade. Average win +2.0R, average loss −0.71R with the default entry.)
 
-**By sub-period (default):** 2006-2014 (gold only) 2.6%/yr, −5.0% · 2015-2020 16.3%/yr, −6.6% · 2021-2026 9.8%/yr,
-−8.3%. Longest time below a previous high: ~3.1 years (Sep 2012 → Oct 2015, gold bear market). Longest run of
-losing months: 5.
+**By sub-period (default):** 2006-2014 (gold only) 2.5%/yr, −4.5% · 2015-2020 16.1%/yr, −5.9% · 2021-2026 10.1%/yr,
+−8.1%. Longest time below a previous high: ~1.6 years (Mar 2014 → Oct 2015). Longest run of losing months: 5.
 
-**Year by year (default, 1% risk, %):** 2006 −0.9 · 2007 +10.4 · 2008 +2.3 · 2009 +1.1 · 2010 −0.2 · 2011 +7.7 ·
-2012 +1.5 · 2013 −1.7 · 2014 +1.4 · 2015 +7.4 · 2016 +20.7 · 2017 +19.7 · 2018 +0.1 · 2019 +11.1 · 2020 +43.6 ·
-2021 +19.2 · 2022 −6.0 · 2023 +27.3 · 2024 +9.3 · 2025 +7.7 · 2026 +4.7 (to 4 Nov)
+**Year by year (default, 1% risk, %):** 2006 −0.9 · 2007 +9.4 · 2008 +2.3 · 2009 +0.7 · 2010 −0.2 · 2011 +7.7 ·
+2012 +2.5 · 2013 −1.7 · 2014 +1.4 · 2015 +7.4 · 2016 +19.6 · 2017 +18.8 · 2018 +0.1 · 2019 +9.5 · 2020 +46.4 ·
+2021 +19.8 · 2022 −6.0 · 2023 +27.3 · 2024 +10.2 · 2025 +8.1 · 2026 +4.7 (to 4 Nov)
 
-**Profitability and drawdown by period (default breakout entry, 20 years):**
+**Profitability and drawdown by period (default: breakout + MACD, 20 years):**
 
 | | Daily | Weekly | Monthly | Yearly |
 |---|---|---|---|---|
-| 1% risk: profitable / losing / flat | 21.7 / 19.2 / 59.1% | 28.6 / 26.1 / 45.3% | 43.6 / 36.9 / 19.5% | 81.0 / 19.0 / 0% |
-| 1% risk: profitable when in a trade | 53.1% | 52.4% | 54.1% | 81.0% |
+| 1% risk: profitable / losing / flat | 21.1 / 18.6 / 60.3% | 28.1 / 24.9 / 47.0% | 43.6 / 36.5 / 19.9% | 81.0 / 19.0 / 0% |
+| 1% risk: profitable when in a trade | 53.1% | 53.0% | 54.4% | 81.0% |
 | 1% risk: average return | +0.03% | +0.17% | +0.73% | +8.9% |
-| 1% risk: best / worst period | +4.7 / −3.3% | +10.5 / −3.2% | +19.5 / −3.2% | +43.6 / −6.0% |
-| 1% risk: worst drawdown within a period | −3.3% | −3.6% | −4.8% | −6.8% |
-| 2% risk: profitable | 21.7% | 28.7% | 44.0% | 76.2% |
-| 2% risk: average return | +0.05% | +0.33% | +1.42% | +18.5% |
-| 2% risk: best / worst period | +8.3 / −6.2% | +20.7 / −5.8% | +39.2 / −6.3% | +96.8 / −11.8% |
+| 1% risk: best / worst period | +4.7 / −3.3% | +10.5 / −2.9% | +19.1 / −2.6% | +46.4 / −6.0% |
+| 1% risk: worst drawdown within a period | −3.3% | −3.5% | −4.8% | −6.8% |
+| 2% risk: profitable | 21.1% | 28.2% | 44.0% | 76.2% |
+| 2% risk: average return | +0.05% | +0.33% | +1.42% | +18.6% |
+| 2% risk: best / worst period | +8.3 / −6.2% | +20.7 / −5.5% | +38.3 / −5.0% | +104.7 / −11.8% |
 | 2% risk: worst drawdown within a period | −6.2% | −6.7% | −8.8% | −13.0% |
 
-The breakout entry waits for a fresh 20-day high, so it is out of the market more often (59% of days flat).
+The breakout entry waits for a fresh 20-day high confirmed by MACD, so it is out of the market more often
+(60% of days flat).
 
 ### Running the 24/7 scanner
 

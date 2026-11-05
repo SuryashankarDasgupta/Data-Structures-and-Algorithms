@@ -99,7 +99,7 @@ class BreakoutRuleTests(unittest.TestCase):
 
     def test_breakout_entry_and_no_trend_exit(self):
         b = self.bars_with_breakout()
-        r = Rules(entry_mode="breakout", breakout_len=20)
+        r = Rules(entry_mode="breakout", breakout_len=20, macd_filter=False)
         self.assertEqual(decide(b.iloc[:-1], default_spec("BTCUSD"), r, None).action, "none")
         d = decide(b, default_spec("BTCUSD"), r, None)
         self.assertEqual(d.action, "buy")
@@ -110,12 +110,23 @@ class BreakoutRuleTests(unittest.TestCase):
         self.assertNotEqual(decide(down, default_spec("BTCUSD"), r, st).action, "close")
         self.assertEqual(decide(down, default_spec("BTCUSD"), Rules(entry_mode="trend"), st).action, "close")
 
+    def test_macd_filter_blocks_entry_against_momentum(self):
+        b = self.bars_with_breakout()
+        on, off = Rules(entry_mode="breakout", macd_filter=True), Rules(entry_mode="breakout", macd_filter=False)
+        d = decide(b, default_spec("BTCUSD"), off, None)
+        self.assertEqual(d.action, "buy")
+        from bridge.live_strategy import indicators
+        last = indicators(b, on).iloc[-1]
+        expected = "buy" if last.macd > last.macd_sig else "none"
+        self.assertEqual(decide(b, default_spec("BTCUSD"), on, None).action, expected)
+
 
 class ScannerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         # the smooth test series never makes a new 20-day high, so these mechanics tests use the trend rule
         self.cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0, entry_mode="trend",
+                          macd_filter=False,
                           max_trades_per_day=100, kill_switch_file=os.path.join(self.tmp.name, "KILL"))
         self.journal = Journal()
         self.broker = PaperBroker(25_000, spread=0.0)
@@ -213,14 +224,15 @@ class ReplayParityTest(unittest.TestCase):
 
     def test_same_trade_days_as_backtest(self):
         for mode in ("breakout", "trend"):
-            with self.subTest(mode=mode):
-                self._parity(mode)
+            for macd in (True, False):
+                with self.subTest(mode=mode, macd=macd):
+                    self._parity(mode, macd)
 
-    def _parity(self, mode):
-        bars = synthetic_xauusd(700, freq="1D", start_price=30000.0, seed=11)
+    def _parity(self, mode, macd):
+        bars = synthetic_xauusd(1100, freq="1D", start_price=30000.0, seed=11)
         cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0, max_trades_per_day=100,
                      max_daily_loss_pct=100, kill_switch_file="/nonexistent/KILL", news_block_hours=0,
-                     entry_mode=mode)
+                     entry_mode=mode, macd_filter=macd)
         journal = Journal()
         broker = PaperBroker(25_000, spread=0.0)
         broker.half_spread = lambda symbol, price: 0.0      # fill exactly at the signal close, like the rules
@@ -241,7 +253,7 @@ class ReplayParityTest(unittest.TestCase):
         journal.close()
 
         res = run_portfolio({"BTCUSD": bars}, PortfolioParams(risk_pct=1.0, news_mode="off", max_position_lev=1.0,
-                                                              entry_mode=mode),
+                                                              entry_mode=mode, macd_filter=macd),
                             {"BTCUSD": default_spec("BTCUSD")})
         bt = [t for t in res.trades if t.exit_reason != "end_of_data"]
         # backtest fills at the open of the bar AFTER the live signal bar

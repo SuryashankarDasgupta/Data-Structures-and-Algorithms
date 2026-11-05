@@ -23,6 +23,10 @@ from backtest.markets import MarketSpec
 class Rules:
     entry_mode: str = "breakout"       # breakout | trend
     breakout_len: int = 20
+    macd_filter: bool = True           # new entries need MACD(12/26/9) on the trade's side of its signal line
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
     fast_len: int = 20
     slow_len: int = 200
     atr_len: int = 14
@@ -53,6 +57,8 @@ def indicators(bars: pd.DataFrame, r: Rules) -> pd.DataFrame:
     d["ema_f"] = ind.ema(d.close, r.fast_len)
     d["ema_s"] = ind.ema(d.close, r.slow_len)
     d["atr"] = ind.atr(d, r.atr_len)
+    m = ind.ema(d.close, r.macd_fast) - ind.ema(d.close, r.macd_slow)
+    d["macd"], d["macd_sig"] = m, ind.ema(m, r.macd_signal)
     return d
 
 
@@ -101,6 +107,9 @@ def decide(bars: pd.DataFrame, spec: MarketSpec, r: Rules, state: Optional[Posit
     else:
         long_sig = bool(up and last.close > last.ema_f)
         short_sig = bool(spec.allow_shorts and dn and last.close < last.ema_f)
+    if r.macd_filter:
+        long_sig = long_sig and bool(last.macd > last.macd_sig)
+        short_sig = short_sig and bool(last.macd < last.macd_sig)
     if not (long_sig or short_sig):
         return Decision("none", reason="no signal")
     if news_next and spec.usd_news:

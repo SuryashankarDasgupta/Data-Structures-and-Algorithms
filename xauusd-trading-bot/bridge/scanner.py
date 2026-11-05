@@ -48,7 +48,8 @@ class Scanner:
         self.engine = engine
         self.feeds = feeds
         self.rules = rules or Rules(entry_mode=getattr(cfg, "entry_mode", "breakout"),
-                                    breakout_len=getattr(cfg, "breakout_len", 20))
+                                    breakout_len=getattr(cfg, "breakout_len", 20),
+                                    macd_filter=getattr(cfg, "macd_filter", True))
         self.clock = clock
         self.journal = engine.journal
         self._stop = threading.Event()

@@ -35,6 +35,12 @@ class PortfolioParams:
     # exit only by the trailing stop; "trend" = EMA(fast) > EMA(slow) and close > EMA(fast), plus the EMA exit
     entry_mode: str = "breakout"
     breakout_len: int = 20
+    # MACD confirmation for new entries: long only if MACD(fast, slow) > its signal line (short: below).
+    # Improved tuning and unseen results in 6 of 8 MACD settings tested (Nov 2026); standard 12/26/9 used.
+    macd_filter: bool = True
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
     fast_len: int = 20
     slow_len: int = 200
     atr_len: int = 14
@@ -105,6 +111,12 @@ def _prepare(df: pd.DataFrame, spec: MarketSpec, p: PortfolioParams, events) -> 
         d["short_sig"] = (d.dn & (d.close < d.ema_f)) if spec.allow_shorts else False
     else:
         raise ValueError(f"unknown entry_mode {p.entry_mode!r}")
+    if p.macd_filter:
+        m = ind.ema(d.close, p.macd_fast) - ind.ema(d.close, p.macd_slow)
+        sig = ind.ema(m, p.macd_signal)
+        d["long_sig"] = d["long_sig"] & (m > sig)
+        if spec.allow_shorts:
+            d["short_sig"] = d["short_sig"] & (m < sig)
     warm = max(p.slow_len, p.atr_len)
     d.iloc[:warm, d.columns.get_indexer(["long_sig", "short_sig"])] = False
     use_news = p.news_mode == "block" and spec.usd_news and events
