@@ -74,6 +74,21 @@ drawdown, profit factor 2.48 → 2.65, longest time below a high ~3.1 → ~1.6 y
 by luck; the neighbour check makes that less likely, not impossible. RSI > 50 changes nothing (a 20-day breakout
 almost always has RSI above 50); RSI < 70, Bollinger squeezes, ADX and Stochastic filters made results worse.
 
+**Candle structure, tested on top of breakout + MACD (Nov 2026):** none adopted.
+
+| Candle rule | Tuning (2006-20) | Unseen (2021-26) | Profit per trade | Verdict |
+|---|---|---|---|---|
+| Current (no candle rule) | 1.29 | 1.18 | +0.65R | baseline |
+| Breakout candle closes in top 25% / top half of its range | 1.53 / 1.41 | 0.90 / 1.11 | +0.63R / +0.64R | ❌ worse unseen |
+| Big body (≥ 50% of range) / no long upper wick | 1.23 / 1.40 | 1.09 / 0.90 | +0.65R / +0.63R | ❌ |
+| Bullish candle / not a doji / previous candle bullish | 1.21 / 1.28 / 1.41 | 1.18 / 1.18 / 1.01 | ≈ | ❌ no gain |
+| Wide-range bar (≥ 1.2 ATR) / no blow-off bar (< 2 ATR) | 1.18 / 0.86 | 1.21 / 0.80 | +0.65R / +0.55R | ❌ |
+| Entry patterns in an uptrend: bullish engulfing, hammer/pin bar, hammer at EMA20, inside-bar breakout, three white soldiers, morning star | 0.25-0.86 | −0.18-1.22 | +0.05 to +0.83R | ❌ all weaker than breakouts in tuning |
+| Exits: bearish engulfing, shooting star, evening star, weak close | 0.87-1.06 | 1.18-1.40 | +0.37 to +0.60R | ❌ worse in tuning, and they cut winners short |
+
+(Numbers are return ÷ max drawdown, gold + BTC + ETH, 1% risk.) Candle filters that looked better in 2006-2020 got worse
+in 2021-2026, the typical sign of fitting noise. Candle exits sell winners early, which lowers profit per trade.
+
 On **gold alone** the trend entry still did better over 2000-2026, so the gold TradingView script keeps *Trend* as
 its default (Breakout is an input). The breakout default applies to the multi-market portfolio and scanner.
 
