@@ -110,6 +110,26 @@ The resistance entries help mostly **gold** (unseen return/drawdown 0.34 → 0.6
 about unchanged. Caveat: tested on gold alone from 2001 at 2% risk, the same rule was worse than the trend entry in
 2001-2015 and better after 2016, so the gold-only TradingView default stays *Trend*. Switch: `RESISTANCE_ENTRIES=off`.
 
+**Fibonacci, Elliott wave, harmonic patterns and more indicators (Nov 2026): none adopted.** Swings come from a
+zigzag of confirmed pivots (5 bars each side, used only once confirmed). Baseline = current default (1.36 / 1.64).
+
+| Rule | Tuning / unseen | Verdict |
+|---|---|---|
+| Fibonacci pullback into 38.2-61.8% of the last up-swing (stand-alone / added) | 0.41 / 0.12 · 1.32 / 1.02 | ❌ |
+| Fibonacci 161.8% extension as take-profit | 1.36 / 1.36 | ❌ cuts winners |
+| Elliott wave-3 breakout (wave 2 retrace 38.2-78.6%), stand-alone / added / as filter | 0.81 / 0.23 · 1.37 / 1.52 · 0.63 / 0.34 | ❌ |
+| Harmonic Gartley / Bat / Butterfly / Crab (bullish XABCD) | only 6 cases in 20 years on 3 markets | ❌ too rare to trade |
+| Ichimoku: above cloud / Tenkan > Kijun / TK-cross entries | 1.08 / 1.14 · 1.43 / 1.44 · 1.24 / 1.48 | ❌ |
+| Supertrend(10,3) filter or exit | 1.36 / 1.64 (no change) | ❌ breakouts are always above it; trailing stop exits first |
+| Parabolic SAR filter / exit | 1.30 / 1.61 · 1.63 / 1.23 | ❌ |
+| Keltner breakout (close > EMA20 + 2 ATR) | 1.68 / 1.56 | ❌ better tuning, worse unseen |
+| CCI > 100 · Williams %R > −20 · Aroon up > 70 | 1.09 / 1.51 · 1.33 / 1.55 · 1.25 / 1.56 | ❌ |
+| 12-month momentum > 0 | 1.45 / 1.09 | ❌ |
+| Heikin-Ashi bullish candle | 1.26 / 1.81 | ❌ worse tuning |
+
+In total 89 indicator, candle, chart-pattern, Fibonacci, Elliott and harmonic rules have been tested on top of the core
+strategy; only two (MACD confirmation and twice-tested resistance breaks) improved both periods.
+
 On **gold alone** the trend entry still did better over 2000-2026, so the gold TradingView script keeps *Trend* as
 its default (Breakout is an input). The breakout default applies to the multi-market portfolio and scanner.
 
