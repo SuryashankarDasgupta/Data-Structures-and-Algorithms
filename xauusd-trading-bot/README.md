@@ -127,8 +127,22 @@ zigzag of confirmed pivots (5 bars each side, used only once confirmed). Baselin
 | 12-month momentum > 0 | 1.45 / 1.09 | ❌ |
 | Heikin-Ashi bullish candle | 1.26 / 1.81 | ❌ worse tuning |
 
-In total 89 indicator, candle, chart-pattern, Fibonacci, Elliott and harmonic rules have been tested on top of the core
-strategy; only two (MACD confirmation and twice-tested resistance breaks) improved both periods.
+In total 89 indicator, candle, chart-pattern, Fibonacci, Elliott and harmonic rules (plus 24 machine-learning
+variants, below) have been tested on top of the core strategy; only two (MACD confirmation and twice-tested resistance breaks) improved both periods.
+
+**Machine learning (Nov 2026): none adopted.** Strict walk-forward: models retrained every year on data up to the
+previous 31 Dec only, labels used only once their outcome was known before that date, 23 causal features (returns,
+distance to EMAs in ATR, RSI, MACD, ADX, volatility regime, Bollinger position, candle shape, breakout/resistance
+flags, market), pooled across gold, BTC and ETH. Tested out of sample 2012-2026 (current strategy: return/drawdown
+1.61, 12.0%/yr, −7.5%) and 2021-2026 (1.64).
+
+| Approach | Models | Best out-of-sample result (2012-26 / 2021-26) | Out-of-sample AUC | Verdict |
+|---|---|---|---|---|
+| Meta-labelling: ML decides which of the strategy's trades to take (P(win) ≥ 0.40-0.55) | logistic regression, random forest, gradient boosting | 1.61 / 1.62 (= keeping almost every trade); stricter thresholds 0.16-1.39 | 0.47-0.52 | ❌ |
+| Direct prediction of the next 10 or 20 days (long if P(up) ≥ 0.55 / 0.60) | same | 0.66 / 0.79, drawdowns ≈ −20% | 0.48-0.49 | ❌ |
+
+AUC 0.5 is a coin flip. With ~300 strategy trades and noisy daily prices, the models found no repeatable pattern;
+more complex models just fit noise. ML is not part of the bot.
 
 On **gold alone** the trend entry still did better over 2000-2026, so the gold TradingView script keeps *Trend* as
 its default (Breakout is an input). The breakout default applies to the multi-market portfolio and scanner.
