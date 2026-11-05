@@ -144,6 +144,40 @@ flags, market), pooled across gold, BTC and ETH. Tested out of sample 2012-2026 
 AUC 0.5 is a coin flip. With ~300 strategy trades and noisy daily prices, the models found no repeatable pattern;
 more complex models just fit noise. ML is not part of the bot.
 
+**"$1,000 → $1,500 in a month" and trading more than 5 times a day (Nov 2026): not adopted.**
+
+*Intraday tests* (BTC + ETH, Coinbase 15-minute bars Oct 2025-Nov 2026 and hourly bars Nov 2024-Nov 2026, each split
+in two halves, 1% risk per trade, return per half-year):
+
+| Strategy (15-minute bars) | Trades/day | No fees | 0.05% fee per side | 0.10% fee per side |
+|---|---|---|---|---|
+| RSI(2) scalp, long and short | ~8 | +15% / +24% | −42% / −49% | −73% / −77% |
+| Intraday 20-bar breakout + trailing stop | ~7 | +17% / −16% | −39% / −59% | −68% / −80% |
+| EMA 9/21 crossover | ~5 | −1% / −23% | −40% / −54% | −63% / −73% |
+| RSI(2) dip in an uptrend | ~4 | −7% / +6% | −36% / −29% | −56% / −53% |
+
+On hourly bars (1-2 trades/day) results were mixed around zero after fees. Even before fees the intraday edge is tiny
+and inconsistent; with real exchange fees (0.1% or more per trade for small accounts) frequent trading destroys the
+account. Research agrees: about 97% of Brazilian futures day traders who persisted for 300+ days lost money
+(Chague, De-Losso & Giovannetti), fewer than 1% of Taiwanese day traders were persistently profitable (Barber, Lee,
+Liu & Odean), and EU brokers must disclose that 74-89% of retail CFD accounts lose money.
+
+*Where the screenshots come from:* a Monte Carlo of this strategy's own 294 trades (10,000 two-year paths, $1,000 start,
+assuming the backtest edge continues, which is optimistic):
+
+| Risk per trade | Median after 2 years | Chance of at least one +50% month | Chance of losing half the account at some point | Chance of losing 90% |
+|---|---|---|---|---|
+| **1% (default)** | **$1,188** | 0% | 0% | 0% |
+| 2% | $1,387 | 0.1% | 0% | 0% |
+| 5% | $2,121 | 22% | 0% | 0% |
+| 10% | $3,592 | 78% | 3% | 0% |
+| 20% | $6,791 | 98% | 20% | 0.6% |
+| 40% | $5,069 | 99.9% | 57% | 20% |
+
+A +50% month is easy to produce with 10-40% risk per trade, and only the winners post screenshots (survivorship
+bias). The same risk wipes out a large share of accounts, and if the edge is smaller live than in a backtest (it
+usually is), ruin is far more likely. The bridge caps risk per trade at `MAX_RISK_PCT` (2.5%) on purpose.
+
 On **gold alone** the trend entry still did better over 2000-2026, so the gold TradingView script keeps *Trend* as
 its default (Breakout is an input). The breakout default applies to the multi-market portfolio and scanner.
 
