@@ -71,6 +71,8 @@ class Config:
     scanner_enabled: bool = False
     scan_interval_s: int = 300
     risk_pct: float = 1.0              # equity at risk per new position (initial stop distance)
+    entry_mode: str = "breakout"       # breakout (20-day high) | trend (EMA20/200)
+    breakout_len: int = 20
     nonfx_feed: str = "auto"           # data for gold/forex: oanda | yahoo (paper only) | auto
     fx_shorts: bool = True
     crypto_shorts: bool = False
@@ -116,6 +118,8 @@ class Config:
             scanner_enabled=_env("SCANNER", "off").strip().lower() in ("1", "on", "true", "yes"),
             scan_interval_s=int(_env("SCAN_INTERVAL_S", "300")),
             risk_pct=float(_env("RISK_PCT", "1.0")),
+            entry_mode=_env("ENTRY_MODE", "breakout").strip().lower(),
+            breakout_len=int(_env("BREAKOUT_LEN", "20")),
             nonfx_feed=_env("NONFX_FEED", "auto").strip().lower(),
             fx_shorts=_env("FX_SHORTS", "on").strip().lower() in ("1", "on", "true", "yes"),
             crypto_shorts=_env("CRYPTO_SHORTS", "off").strip().lower() in ("1", "on", "true", "yes"),
@@ -147,6 +151,10 @@ class Config:
             raise ValueError("NONFX_FEED=yahoo is an unofficial data source, allowed with BROKER=paper only")
         if not 0 < self.risk_pct <= self.max_risk_pct:
             raise ValueError("RISK_PCT must be positive and not above MAX_RISK_PCT")
+        if self.entry_mode not in ("breakout", "trend"):
+            raise ValueError("ENTRY_MODE must be breakout or trend")
+        if self.breakout_len < 2:
+            raise ValueError("BREAKOUT_LEN must be at least 2")
         if self.scan_interval_s < 30:
             raise ValueError("SCAN_INTERVAL_S must be at least 30 seconds")
         if self.broker == "oanda":

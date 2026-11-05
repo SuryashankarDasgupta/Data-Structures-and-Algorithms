@@ -7,7 +7,7 @@ import urllib.request
 from bridge.brokers import PaperBroker
 from bridge.config import Config
 from bridge.engine import Engine
-from bridge.journal import Journal
+from bridge.journal import Journal, utc_now
 from bridge.worker import OrderWorker
 from tests.test_bridge import BAR_1H, NOW, SECRET, close, entry, http_post, running_server
 
@@ -117,7 +117,8 @@ class WorkerTests(unittest.TestCase):
         self.assertTrue(wait_for(lambda: len(self.statuses()) == 2))
         self.assertEqual(self.statuses(), ["error", "accepted"])
         self.assertTrue(self.worker.is_alive())
-        rows = self.journal.signals_on(NOW.date().isoformat())
+        # signals are stamped with the real clock (journal.utc_now), not the engine's test clock
+        rows = self.journal.signals_on(utc_now().date().isoformat())
         self.assertIn("error", [r["status"] for r in rows])
         self.assertEqual(self.broker.position("XAUUSD").units, 10)
 

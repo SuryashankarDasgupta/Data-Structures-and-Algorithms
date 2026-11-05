@@ -1,8 +1,10 @@
-"""The daily trend rules, evaluated on live completed bars. Mirrors backtest/portfolio.py exactly:
+"""The daily rules, evaluated on live completed bars. Mirrors backtest/portfolio.py exactly:
 
-  entry : EMA(fast) > EMA(slow) and close > EMA(fast) (mirror for shorts where allowed), no USD news next session
+  entry (breakout, default): close above the highest high of the previous `breakout_len` bars
+  entry (trend)            : EMA(fast) > EMA(slow) and close > EMA(fast)
+                             (mirror for shorts where allowed; no new entry before USD news for gold/forex)
   stop  : signal close -/+ init_atr x ATR, then trailed at (extreme since the fill bar) -/+ trail_atr x ATR
-  exit  : trend filter flips at a daily close, or the stop is hit
+  exit  : the stop is hit; in trend mode also when the EMA filter flips at a daily close
 """
 from __future__ import annotations
 
@@ -19,6 +21,8 @@ from backtest.markets import MarketSpec
 
 @dataclass
 class Rules:
+    entry_mode: str = "breakout"       # breakout | trend
+    breakout_len: int = 20
     fast_len: int = 20
     slow_len: int = 200
     atr_len: int = 14
@@ -80,8 +84,9 @@ def decide(bars: pd.DataFrame, spec: MarketSpec, r: Rules, state: Optional[Posit
     d = indicators(bars, r)
     last = d.iloc[-1]
     up, dn = last.ema_f > last.ema_s, last.ema_f < last.ema_s
+    breakout = r.entry_mode == "breakout"
     if state is not None:
-        if (state.side > 0 and dn) or (state.side < 0 and up):
+        if not breakout and ((state.side > 0 and dn) or (state.side < 0 and up)):
             return Decision("close", ref_price=float(last.close), reason="trend")
         stop = trailing_stop(d, state, r)
         if (state.side > 0 and stop > state.last_stop + 1e-12) or (state.side < 0 and stop < state.last_stop - 1e-12):
@@ -89,11 +94,17 @@ def decide(bars: pd.DataFrame, spec: MarketSpec, r: Rules, state: Optional[Posit
         return Decision("none", reason="holding")
     if not last.atr > 0:
         return Decision("none", reason="no ATR")
-    long_sig = up and last.close > last.ema_f
-    short_sig = spec.allow_shorts and dn and last.close < last.ema_f
+    if breakout:
+        prior = d.iloc[-1 - r.breakout_len:-1]
+        long_sig = bool(last.close > prior.high.max())
+        short_sig = bool(spec.allow_shorts and last.close < prior.low.min())
+    else:
+        long_sig = bool(up and last.close > last.ema_f)
+        short_sig = bool(spec.allow_shorts and dn and last.close < last.ema_f)
     if not (long_sig or short_sig):
         return Decision("none", reason="no signal")
     if news_next and spec.usd_news:
         return Decision("none", reason="high-impact USD news next session")
     sd = float(r.init_atr * last.atr)
-    return Decision("buy" if long_sig else "sell", ref_price=float(last.close), sl_dist=sd, reason="trend entry")
+    return Decision("buy" if long_sig else "sell", ref_price=float(last.close), sl_dist=sd,
+                    reason=f"{r.entry_mode} entry")

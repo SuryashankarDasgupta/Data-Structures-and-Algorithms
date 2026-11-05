@@ -132,3 +132,15 @@ class PeriodStatsTests(unittest.TestCase):
         st = period_stats(pd.Series([100.0, 110.0, 99.0, 105.0], index=idx))
         self.assertAlmostEqual(st.loc["worst_drawdown_pct", "monthly"], -10.0)   # 110 -> 99
         self.assertAlmostEqual(st.loc["best_pct", "monthly"], 5.0)
+
+
+class BreakoutModeTests(unittest.TestCase):
+    def test_breakout_exits_only_by_stop(self):
+        df = synthetic_xauusd(1500, freq="1D")
+        res = run(df, Params(entry_mode="breakout"))
+        self.assertGreater(len(res.trades), 0)
+        self.assertFalse(any(t.exit_reason == "trend" for t in res.trades))
+
+    def test_unknown_entry_mode(self):
+        with self.assertRaises(ValueError):
+            run(synthetic_xauusd(400, freq="1D"), Params(entry_mode="magic"))

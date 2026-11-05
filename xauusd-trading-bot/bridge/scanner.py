@@ -4,7 +4,7 @@ Every SCAN_INTERVAL_S seconds (default 300) it checks every market in ALLOWED_SY
   1. reconcile: a position the broker closed (e.g. its stop was hit) is forgotten
   2. paper broker only: the latest price is checked against the stop and the position is closed if breached
      (a real broker holds the stop itself)
-  3. when a new daily bar has completed, the trend rules decide: enter, trail the stop, or exit
+  3. when a new daily bar has completed, the rules (20-day breakout by default, or EMA trend) decide: enter, trail the stop, or exit
 
 Orders go through Engine.submit_internal, so every risk limit, duplicate check and journal entry that applies
 to TradingView webhooks applies here too. Position state (signal day, initial and last stop) is stored in the
@@ -47,7 +47,8 @@ class Scanner:
         self.cfg = cfg
         self.engine = engine
         self.feeds = feeds
-        self.rules = rules or Rules()
+        self.rules = rules or Rules(entry_mode=getattr(cfg, "entry_mode", "breakout"),
+                                    breakout_len=getattr(cfg, "breakout_len", 20))
         self.clock = clock
         self.journal = engine.journal
         self._stop = threading.Event()

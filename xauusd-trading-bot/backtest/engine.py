@@ -21,6 +21,10 @@ from . import indicators as ind
 
 @dataclass
 class Params:
+    # trend (EMA20/200, default for gold alone: better over 2000-2026) | breakout (20-day high, stop-only exit;
+    # the default of the multi-market portfolio/scanner, where it beat trend on tuning and unseen data)
+    entry_mode: str = "trend"
+    breakout_len: int = 20
     fast_len: int = 20
     slow_len: int = 200
     allow_shorts: bool = False
@@ -96,10 +100,18 @@ def compute_signals(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     d["ema_f"] = ind.ema(d["close"], p.fast_len)
     d["ema_s"] = ind.ema(d["close"], p.slow_len)
     d["atr"] = ind.atr(d, p.atr_len)
-    d["up"] = d.ema_f > d.ema_s
-    d["dn"] = d.ema_f < d.ema_s
-    d["long_sig"] = d.up & (d.close > d.ema_f)
-    d["short_sig"] = (d.dn & (d.close < d.ema_f)) if p.allow_shorts else False
+    if p.entry_mode == "breakout":
+        d["long_sig"] = d.close > d.high.rolling(p.breakout_len).max().shift()
+        d["short_sig"] = (d.close < d.low.rolling(p.breakout_len).min().shift()) if p.allow_shorts else False
+        d["up"] = False                 # no EMA exit in breakout mode: the trailing stop does the exiting
+        d["dn"] = False
+    elif p.entry_mode == "trend":
+        d["up"] = d.ema_f > d.ema_s
+        d["dn"] = d.ema_f < d.ema_s
+        d["long_sig"] = d.up & (d.close > d.ema_f)
+        d["short_sig"] = (d.dn & (d.close < d.ema_f)) if p.allow_shorts else False
+    else:
+        raise ValueError(f"unknown entry_mode {p.entry_mode!r}")
     warmup = max(p.slow_len, p.atr_len)
     d.iloc[:warmup, d.columns.get_indexer(["long_sig", "short_sig"])] = False
     return d

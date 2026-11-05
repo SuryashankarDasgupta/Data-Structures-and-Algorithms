@@ -59,7 +59,7 @@ class LiveStrategyTests(unittest.TestCase):
     def test_entry_then_trail_then_exit(self):
         bars = trend_bars()
         spec = default_spec("BTCUSD")
-        r = Rules()
+        r = Rules(entry_mode="trend")
         d = decide(bars.iloc[:250], spec, r, None)
         self.assertEqual(d.action, "buy")
         st = PositionState("BTCUSD", 1, str(bars.index[249].date()), d.ref_price - d.sl_dist, d.ref_price - d.sl_dist)
@@ -74,8 +74,9 @@ class LiveStrategyTests(unittest.TestCase):
 
     def test_news_blocks_gold_not_crypto(self):
         bars = trend_bars().iloc[:250]
-        self.assertEqual(decide(bars, default_spec("XAUUSD"), Rules(), None, news_next=True).action, "none")
-        self.assertEqual(decide(bars, default_spec("BTCUSD"), Rules(), None, news_next=True).action, "buy")
+        r = Rules(entry_mode="trend")
+        self.assertEqual(decide(bars, default_spec("XAUUSD"), r, None, news_next=True).action, "none")
+        self.assertEqual(decide(bars, default_spec("BTCUSD"), r, None, news_next=True).action, "buy")
 
     def test_trailing_stop_never_loosens(self):
         bars = trend_bars()
@@ -85,10 +86,36 @@ class LiveStrategyTests(unittest.TestCase):
         self.assertTrue(all(b >= a - 1e-9 for a, b in zip(stops, stops[1:])))
 
 
+class BreakoutRuleTests(unittest.TestCase):
+    def bars_with_breakout(self):
+        b = trend_bars().iloc[:240].copy()
+        flat = b.close.iloc[-30]
+        b.iloc[-30:, b.columns.get_indexer(["open", "close"])] = flat           # 30 flat days...
+        b.iloc[-30:, b.columns.get_indexer(["high"])] = flat * 1.002
+        b.iloc[-30:, b.columns.get_indexer(["low"])] = flat * 0.998
+        nxt = b.index[-1] + pd.Timedelta(days=1)
+        b.loc[nxt] = [flat, flat * 1.02, flat, flat * 1.015]                   # ...then a close above the range
+        return b
+
+    def test_breakout_entry_and_no_trend_exit(self):
+        b = self.bars_with_breakout()
+        r = Rules(entry_mode="breakout", breakout_len=20)
+        self.assertEqual(decide(b.iloc[:-1], default_spec("BTCUSD"), r, None).action, "none")
+        d = decide(b, default_spec("BTCUSD"), r, None)
+        self.assertEqual(d.action, "buy")
+        self.assertIn("breakout", d.reason)
+        # in breakout mode a bearish EMA cross does not close the position; only the stop does
+        down = trend_bars(n_up=210, n_down=60)
+        st = PositionState("BTCUSD", 1, str(down.index[200].date()), 1.0, 1.0)
+        self.assertNotEqual(decide(down, default_spec("BTCUSD"), r, st).action, "close")
+        self.assertEqual(decide(down, default_spec("BTCUSD"), Rules(entry_mode="trend"), st).action, "close")
+
+
 class ScannerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0,
+        # the smooth test series never makes a new 20-day high, so these mechanics tests use the trend rule
+        self.cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0, entry_mode="trend",
                           max_trades_per_day=100, kill_switch_file=os.path.join(self.tmp.name, "KILL"))
         self.journal = Journal()
         self.broker = PaperBroker(25_000, spread=0.0)
@@ -185,9 +212,15 @@ class ReplayParityTest(unittest.TestCase):
     """Replaying history through the live scanner must trade on the same days as the backtester."""
 
     def test_same_trade_days_as_backtest(self):
+        for mode in ("breakout", "trend"):
+            with self.subTest(mode=mode):
+                self._parity(mode)
+
+    def _parity(self, mode):
         bars = synthetic_xauusd(700, freq="1D", start_price=30000.0, seed=11)
         cfg = Config(webhook_secret="s" * 24, allowed_symbols=("BTCUSD",), risk_pct=1.0, max_trades_per_day=100,
-                     max_daily_loss_pct=100, kill_switch_file="/nonexistent/KILL", news_block_hours=0)
+                     max_daily_loss_pct=100, kill_switch_file="/nonexistent/KILL", news_block_hours=0,
+                     entry_mode=mode)
         journal = Journal()
         broker = PaperBroker(25_000, spread=0.0)
         broker.half_spread = lambda symbol, price: 0.0      # fill exactly at the signal close, like the rules
@@ -207,7 +240,8 @@ class ReplayParityTest(unittest.TestCase):
                 live_entries.append(day)
         journal.close()
 
-        res = run_portfolio({"BTCUSD": bars}, PortfolioParams(risk_pct=1.0, news_mode="off", max_position_lev=1.0),
+        res = run_portfolio({"BTCUSD": bars}, PortfolioParams(risk_pct=1.0, news_mode="off", max_position_lev=1.0,
+                                                              entry_mode=mode),
                             {"BTCUSD": default_spec("BTCUSD")})
         bt = [t for t in res.trades if t.exit_reason != "end_of_data"]
         # backtest fills at the open of the bar AFTER the live signal bar

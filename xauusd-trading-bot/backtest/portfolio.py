@@ -31,6 +31,10 @@ from .markets import CRYPTO, FX, FX_CROSSES, FX_MAJORS, METALS, MarketSpec, defa
 
 @dataclass
 class PortfolioParams:
+    # entry rule: "breakout" (default) = close above the highest high of the previous `breakout_len` bars,
+    # exit only by the trailing stop; "trend" = EMA(fast) > EMA(slow) and close > EMA(fast), plus the EMA exit
+    entry_mode: str = "breakout"
+    breakout_len: int = 20
     fast_len: int = 20
     slow_len: int = 200
     atr_len: int = 14
@@ -89,10 +93,18 @@ def _prepare(df: pd.DataFrame, spec: MarketSpec, p: PortfolioParams, events) -> 
     d["ema_f"] = ind.ema(d.close, p.fast_len)
     d["ema_s"] = ind.ema(d.close, p.slow_len)
     d["atr"] = ind.atr(d, p.atr_len)
-    d["up"] = d.ema_f > d.ema_s
-    d["dn"] = d.ema_f < d.ema_s
-    d["long_sig"] = d.up & (d.close > d.ema_f)
-    d["short_sig"] = (d.dn & (d.close < d.ema_f)) if spec.allow_shorts else False
+    if p.entry_mode == "breakout":
+        d["long_sig"] = d.close > d.high.rolling(p.breakout_len).max().shift()
+        d["short_sig"] = (d.close < d.low.rolling(p.breakout_len).min().shift()) if spec.allow_shorts else False
+        d["up"] = False                 # no trend-filter exit: positions leave by the trailing stop only
+        d["dn"] = False
+    elif p.entry_mode == "trend":
+        d["up"] = d.ema_f > d.ema_s
+        d["dn"] = d.ema_f < d.ema_s
+        d["long_sig"] = d.up & (d.close > d.ema_f)
+        d["short_sig"] = (d.dn & (d.close < d.ema_f)) if spec.allow_shorts else False
+    else:
+        raise ValueError(f"unknown entry_mode {p.entry_mode!r}")
     warm = max(p.slow_len, p.atr_len)
     d.iloc[:warm, d.columns.get_indexer(["long_sig", "short_sig"])] = False
     use_news = p.news_mode == "block" and spec.usd_news and events
