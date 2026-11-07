@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Canva",
+      "mcp__Google_Drive",
+      "mcp__Gmail",
+      "mcp__vidIQ",
+      "mcp__Claude_Docs",
+      "mcp__Google_Calendar",
+      "mcp__claude-code-remote",
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "SendMessage",
+      "Artifact",
+      "SendUserFile",
+      "Skill",
+      "ToolSearch"
+    ]
+  }
+}
