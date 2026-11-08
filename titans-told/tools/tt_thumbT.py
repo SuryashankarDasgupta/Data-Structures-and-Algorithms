@@ -15,6 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FONT = os.path.join(HERE, "..", "fonts", "Inter.ttf")
 RED, GOLD, CREAM, INK = (224, 51, 43), (242, 184, 28), (246, 238, 222), (12, 12, 16)
 W, H = 1280, 720
+BOXES = []  # every shock word drawn so far, so the topic banner never overlaps one
 
 
 def font(size, weight="Black"):
@@ -44,6 +45,9 @@ def word(lay, xy, text, f, fill, anchor="la", stroke=None):
     ImageDraw.Draw(sh).text((xy[0] + 8, xy[1] + 10), text, font=f, fill=(0, 0, 0, 200), anchor=anchor, stroke_width=sw, stroke_fill=(0, 0, 0, 200))
     lay.alpha_composite(sh.filter(ImageFilter.GaussianBlur(6)))
     d.text(xy, text, font=f, fill=fill + (255,), anchor=anchor, stroke_width=sw, stroke_fill=INK + (255,))
+    b = d.textbbox(xy, text, font=f, anchor=anchor, stroke_width=sw)
+    BOXES.append((b[0], b[1], b[2] + 8, b[3] + 10))  # + drop shadow
+    return b
 
 
 WORDFONT = os.path.join(HERE, "..", "fonts", "Michroma.ttf")
@@ -81,6 +85,7 @@ def brand_wordmark(lay, text, size=84, track=0.42, ytop=None):
     ImageDraw.Draw(plate).rounded_rectangle((x0 - 26, y0 - 18, x0 + tw + 26, y0 + th + 18), 16, fill=200)
     plate = plate.filter(ImageFilter.GaussianBlur(10))
     lay.alpha_composite(Image.merge("RGBA", (Image.new("L", lay.size, 6),) * 3 + (plate,)))
+    BOXES.append((x0 - 26, y0 - 18, x0 + tw + 26, y0 + th + 18))
     # red glow, then a solid black ink outline like the other thumbnail words
     glow = mask.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(16))
     red = Image.new("RGBA", lay.size, RED + (0,)); red.putalpha(glow.point(lambda v: min(255, int(v * 1.4))))
@@ -139,11 +144,26 @@ def topic_banner(lay, text, x_left=470, bottom=104):  # clears YouTube's duratio
     """Topic strip bottom-right (owner, 7 Nov 2026: keep the video topic in the thumbnail text clearly).
     Dark plate with a gold rule; cream caps with ink outline. Stays right of the left-side words."""
     d = ImageDraw.Draw(lay)
-    maxw = W - 36 - x_left - 36
-    f = fit(d, text, maxw, 64, "Black")
-    b = d.textbbox((0, 0), text, font=f, stroke_width=max(4, f.size // 14))
-    tw, th = b[2] - b[0], b[3] - b[1]
-    x1 = W - 36; x0 = x1 - tw - 44; y1 = H - bottom; y0 = y1 - th - 30
+    x1 = W - 36; y1 = H - bottom
+    # owner, 8 Nov 2026: the banner must never overlap any other text ("INTEL'S WORST DAY" touched the % of "-29%").
+    # Start right of every shock word whose rows meet the banner's rows, keep a 24 px gap, shrink the font to fit.
+    left = x_left
+    for _ in range(3):
+        f = fit(d, text, max(200, x1 - left - 44), 64, "Black")
+        b = d.textbbox((0, 0), text, font=f, stroke_width=max(4, f.size // 14))
+        tw, th = b[2] - b[0], b[3] - b[1]
+        y0 = y1 - th - 30
+        clash = [bx for bx in BOXES if bx[1] < y1 + 6 and bx[3] > y0 - 6 and bx[2] + 24 > x1 - tw - 44]
+        if not clash:
+            break
+        left = max(bx[2] for bx in clash) + 24
+    x0 = x1 - tw - 44
+    clash = [bx for bx in BOXES if bx[1] < y1 + 6 and bx[3] > y0 - 6 and bx[2] + 24 > x0]
+    if clash:
+        # still no room beside the words: lift the banner just above the words it would touch
+        y1 = min(bx[1] for bx in clash) - 14; y0 = y1 - th - 30
+        if any(bx[1] < y1 + 6 and bx[3] > y0 - 6 and bx[2] + 24 > x0 and bx[0] - 24 < x1 for bx in BOXES):
+            print("WARNING: topic banner could not be placed clear of the other text; shorten the topic line")
     plate = Image.new("RGBA", lay.size, (0, 0, 0, 0)); pd = ImageDraw.Draw(plate)
     pd.rounded_rectangle((x0, y0, x1, y1), 12, fill=(10, 14, 26, 225), outline=GOLD + (255,), width=4)
     lay.alpha_composite(plate)
