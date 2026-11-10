@@ -226,6 +226,31 @@ def status(vid):
         print(it["snippet"]["title"], json.dumps(it["status"]), it.get("processingDetails", {}).get("processingStatus"))
 
 
+def comment(vid, text):
+    """Post the channel's first comment on a PUBLIC video, once. Exit 3 = token lacks youtube.force-ssl
+    (owner must re-authorise), exit 4 = video not public yet / comments off. Pinning is not in the API:
+    the owner pins it in YouTube Studio."""
+    tok = token()
+    c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=id&mine=true", tok)
+    me = ch["items"][0]["id"]
+    c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={vid}&maxResults=100&order=time", tok)
+    if c == 403 and "insufficient" in str(d).lower():
+        print("SCOPE_MISSING: the token needs youtube.force-ssl to read/post comments"); sys.exit(3)
+    if c != 200:
+        print("comments unavailable:", c, str(d)[:300]); sys.exit(4)
+    for it in d.get("items", []):
+        top = it["snippet"]["topLevelComment"]["snippet"]
+        if top.get("authorChannelId", {}).get("value") == me:
+            print("already has a channel comment:", it["id"], top.get("textOriginal", "")[:80]); return
+    c, r, _ = api("POST", "https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet", tok,
+                  {"snippet": {"videoId": vid, "topLevelComment": {"snippet": {"textOriginal": text[:10000]}}}})
+    if c == 403 and "insufficient" in str(r).lower():
+        print("SCOPE_MISSING: the token needs youtube.force-ssl to read/post comments"); sys.exit(3)
+    if c != 200:
+        print("comment failed:", c, str(r)[:300]); sys.exit(4)
+    print("commented:", r["id"], f"https://www.youtube.com/watch?v={vid}&lc={r['snippet']['topLevelComment']['id']} (pin it in Studio)")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "update": update(sys.argv[2], sys.argv[3])
@@ -233,3 +258,4 @@ if __name__ == "__main__":
     if cmd == "upload": upload(sys.argv[2])
     if cmd == "status": status(sys.argv[2])
     if cmd == "scheduled": scheduled()
+    if cmd == "comment": comment(sys.argv[2], sys.argv[3])
