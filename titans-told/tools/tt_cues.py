@@ -29,7 +29,14 @@ scenes[-1]["end"] = total
 #    second framings, never back to back
 #  - one illustration shot lasts at most 6.0 s (Ken Burns keeps it moving); longer beats get a NEW visual cue
 #  - graphics have their own limits (quote 9.5, headline 9, checklist/timeline/charts 13, others 8.5 s)
-IMG_MAX = 6.0
+# PACING RULES (owner, 10 Nov 2026, from the vidIQ reviews of Tesla/Nike: static hook, scoreboard held too long,
+# slow explainer stretches, "visual fatigue"):
+#  1. first 30 s: every shot <= 2.6 s (a cut at least every ~2.5 s; images there move faster in tt_compose)
+#  2. the running thread graphic (checklist with "done") <= 4.5 s, and every return shows a NEW state
+#  3. images <= 4.5 s anywhere; text graphics shorter (quote 7, headline 6, charts/timelines/plain checklists 8, others 6)
+#  4. a visual re-hook (image with motion "punch", counter, headline or split) at least every 90 s from 0:30 to the outro
+IMG_MAX = 4.5
+HOOK_END, HOOK_MAX, THREAD_MAX, REHOOK_GAP = 30.0, 2.6, 4.5, 90.0
 problems = []
 from collections import Counter
 uses = Counter()
@@ -39,14 +46,31 @@ for sc in scenes:
         if d > IMG_MAX:
             problems.append(f"IMAGE TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc['src']}): add another visual cue inside it")
     else:
-        lim = {"checklist": 13, "timeline": 13, "linechart": 13, "bars": 13, "quote": 9.5, "headline": 9.0}.get(sc.get("type"), 8.5)
+        lim = {"checklist": 8, "timeline": 8, "linechart": 8, "bars": 8, "quote": 7.0, "headline": 6.0}.get(sc.get("type"), 6.0)
+        if sc.get("type") == "checklist" and "done" in sc:
+            lim = THREAD_MAX
         if d > lim:
-            problems.append(f"GRAPHIC TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}): add another visual cue inside it")
+            problems.append(f"GRAPHIC TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}, max {lim}s): add another visual cue inside it")
+    if sc["start"] < HOOK_END and d > HOOK_MAX:
+        problems.append(f"HOOK SHOT TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}): in the first 30 s cut at least every {HOOK_MAX}s")
     if d < 2.0 and sc is not scenes[0]:
         problems.append(f"SHOT TOO SHORT {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}): merge or move the cue")
     for o in (sc, sc.get("left") or {}, sc.get("right") or {}):
         if o.get("src"):
             uses[o["src"]] += 1
+seen_states = set()
+for sc in scenes:
+    if sc.get("type") == "checklist" and "done" in sc:
+        st = (sc.get("title"), tuple(sc.get("items", [])), json.dumps(sc.get("done")), json.dumps(sc.get("active")))
+        if st in seen_states:
+            problems.append(f"THREAD GRAPHIC REPEATED WITH NO CHANGE at {sc['start']:.1f}s: tick a new item or move 'active'")
+        seen_states.add(st)
+outro_t = next((sec["start"] for sec in tl if sec["section"] == "OUTRO"), total)
+rehooks = [sc["start"] for sc in scenes if sc.get("motion") == "punch" or sc.get("type") in ("counter", "headline", "split")]
+marks = [HOOK_END] + [r for r in rehooks if HOOK_END <= r <= outro_t] + [outro_t]
+for a_, b_ in zip(marks, marks[1:]):
+    if b_ - a_ > REHOOK_GAP:
+        problems.append(f"NO RE-HOOK for {b_ - a_:.0f}s between {a_:.0f}s and {b_:.0f}s: add a punch-in image, counter, headline or split")
 for src, n in uses.items():
     if n > 1:
         problems.append(f"IMAGE USED {n} TIMES (max 1): {src}")

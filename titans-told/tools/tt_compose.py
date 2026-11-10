@@ -27,6 +27,17 @@ Scene types (all accept optional "caption": "lower-third text", "kinetic": "BIG 
   frame3d  {"src": png, "yaw0": -14, "yaw1": 10, "focus": [x,y]}         illustration as a turning 3D print
 Spec "tracker": {"items": ["THE IDEA", ...], "starts": [s1, ...], "end": t} draws a chapter tracker across the top.
 Crossfade 0.35 s between scenes. Paper-grain texture over everything.
+
+LIVING ILLUSTRATIONS (owner, 10 Nov 2026: vidIQ review said the visuals were static and caused "visual fatigue";
+fix 5 approved): every image scene now has
+  - 2.5D depth: a perspective "dolly" where the lower (near) part of the picture moves and scales faster than the
+    upper (far) part, so the camera seems to travel into the scene;
+  - camera drift: a slow hand-held float (well under 1 % of the frame);
+  - atmosphere particles: "fx": "dust" (default, slow gold motes), "rain" (crisis scenes), "embers" (triumph,
+    rising sparks) or "none";
+  - "motion": "punch" = a fast 0.6 s push-in to 1.22x then a slow drift (use it for re-hook moments);
+  - images that start in the first 30 s move faster (1.0 -> 1.22 zoom).
+Spec "depth": false turns the depth/drift/particles off for the whole video.
 """
 import json, math, os, subprocess, sys
 import numpy as np
@@ -582,6 +593,93 @@ def draw_headline(scene, t, dur):
     return im
 
 
+DEPTH = True
+
+
+def living_image(im, t, dur, scene):
+    """Ken Burns + 2.5D dolly + camera drift (see module doc)."""
+    iw, ih = im.size
+    p = t / max(dur, 0.01)
+    motion = scene.get("motion", "in")
+    fx, fy = scene.get("focus", [0.5, 0.5])
+    base_w = min(iw, ih * W / H)
+    base_h = base_w * H / W
+    fast = scene.get("start", 99) < 30
+    z0, z1, dx0, dx1, dy0, dy1 = 1.0, 1.14, 0.0, 0.0, 0.0, 0.0
+    if motion == "in":
+        z0, z1 = 1.0, (1.22 if fast else 1.14)
+    elif motion == "out":
+        z0, z1 = (1.22 if fast else 1.14), 1.0
+    elif motion in ("left", "right"):
+        z0 = z1 = 1.14
+        dx0, dx1 = (0.5, -0.5) if motion == "left" else (-0.5, 0.5)
+    elif motion in ("up", "down"):
+        z0 = z1 = 1.14
+        dy0, dy1 = (0.5, -0.5) if motion == "up" else (-0.5, 0.5)
+    elif motion == "still":
+        z0 = z1 = 1.06
+    if motion == "punch":
+        q = ease(min(1.0, t / 0.6))
+        z = 1.0 + 0.22 * q + 0.03 * p
+        q2 = 0.0
+    else:
+        q = ease(p)
+        z = z0 + (z1 - z0) * q
+        q2 = q
+    cw, ch = base_w / z, base_h / z
+    cx = fx * iw + (dx0 + (dx1 - dx0) * q2) * (base_w - cw)
+    cy = fy * ih + (dy0 + (dy1 - dy0) * q2) * (base_h - ch)
+    if DEPTH and scene.get("depth", True):
+        cx += math.sin(t * 0.55 + scene.get("start", 0)) * cw * 0.006
+        cy += math.cos(t * 0.43 + scene.get("start", 0) * 0.7) * ch * 0.005
+    cx = min(max(cx, cw / 2), iw - cw / 2)
+    cy = min(max(cy, ch / 2), ih - ch / 2)
+    x0, y0, x1, y1 = cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2
+    if not (DEPTH and scene.get("depth", True)):
+        return im.transform((W, H), Image.EXTENT, (x0, y0, x1, y1), Image.BICUBIC)
+    # 2.5D dolly: the bottom (near) edge of the source window shrinks faster than the top (far) edge as the
+    # camera moves in, so near things grow faster than far things; the window always stays inside the image.
+    k = 0.045 * (q if motion != "punch" else q * 1.3)
+    inset = cw * k / 2
+    src = [(x0, y0), (x1, y0), (x1 - inset, y1 - ch * k * 0.5), (x0 + inset, y1 - ch * k * 0.5)]
+    co = _persp_coeffs(src, [(0, 0), (W, 0), (W, H), (0, H)])
+    return im.transform((W, H), Image.PERSPECTIVE, co, Image.BICUBIC)
+
+
+_PART = {}
+
+
+def particles_layer(kind, t, seed):
+    """Soft atmosphere over an image scene: dust (gold motes drifting), rain (streaks), embers (rising sparks)."""
+    if kind not in ("dust", "rain", "embers"):
+        return None
+    key = (kind, seed % 997)
+    if key not in _PART:
+        rng = np.random.default_rng(seed % 997)
+        n = {"dust": 70, "rain": 160, "embers": 55}[kind]
+        _PART[key] = (rng.random(n), rng.random(n), rng.random(n), rng.random(n))
+    xs, ys, ss, ph = _PART[key]
+    lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(lay)
+    for x, y, s, f in zip(xs, ys, ss, ph):
+        if kind == "dust":
+            px = (x * W + math.sin(t * 0.4 + f * 6) * 40) % W
+            py = (y * H - t * (8 + 14 * s)) % H
+            r = 2.0 + 4.0 * s
+            a = int(70 + 110 * (0.5 + 0.5 * math.sin(t * 1.3 + f * 9)))
+            d.ellipse((px - r, py - r, px + r, py + r), fill=(255, 226, 150, a))
+        elif kind == "rain":
+            px = (x * W + t * 120) % W
+            py = (y * H + t * (900 + 500 * s)) % H
+            d.line((px, py, px - 12, py - 44 - 34 * s), fill=(215, 228, 245, int(95 + 80 * s)), width=3)
+        else:
+            px = (x * W + math.sin(t * 0.9 + f * 5) * 30) % W
+            py = (y * H - t * (60 + 90 * s)) % H
+            r = 1.5 + 2.5 * s
+            d.ellipse((px - r, py - r, px + r, py + r), fill=(255, 170, 60, int(90 + 110 * s)))
+    return lay.filter(ImageFilter.GaussianBlur(1.2))
+
+
 def _persp_coeffs(src_pts, dst_pts):
     A, B = [], []
     for (x, y), (u, v) in zip(dst_pts, src_pts):
@@ -619,7 +717,11 @@ def scene_frame(scene, t):
     dur = scene["end"] - scene["start"]
     typ = scene.get("type", "image")
     if typ == "image":
-        im = kenburns(load_img(scene["src"]), t / max(dur, 0.01), scene.get("motion", "in"), scene.get("focus", [0.5, 0.5]))
+        im = living_image(load_img(scene["src"]), t, dur, scene)
+        fxk = scene.get("fx", "dust") if DEPTH else "none"
+        pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100))
+        if pl is not None:
+            im = im.convert("RGBA"); im.alpha_composite(pl); im = im.convert("RGB")
     elif typ == "card":
         im = draw_card(scene, t, dur)
     elif typ == "quote":
@@ -742,8 +844,9 @@ def main():
     if preview:
         total = min(total, preview)
     scenes = sorted(spec["scenes"], key=lambda s: s["start"])
-    global TRACKER
+    global TRACKER, DEPTH
     TRACKER = spec.get("tracker")
+    DEPTH = bool(spec.get("depth", True))
     nfr = int(total * FPS)
     silent = out + ".video.mp4"
     if "--part" in sys.argv:  # worker: render a frame range to a video-only file
