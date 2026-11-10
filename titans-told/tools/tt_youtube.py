@@ -197,6 +197,28 @@ def update(meta_path, vid):
             print("playlist description:", c)
 
 
+def scheduled():
+    """Print every upload that is still private with a publishAt (time, id, title), oldest slot first."""
+    tok = token()
+    c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true", tok)
+    up = ch["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    ids, page = [], ""
+    while True:
+        c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={up}{page}", tok)
+        ids += [i["contentDetails"]["videoId"] for i in d.get("items", [])]
+        if not d.get("nextPageToken"):
+            break
+        page = "&pageToken=" + d["nextPageToken"]
+    rows = []
+    for k in range(0, len(ids), 50):
+        c, d, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/videos?part=snippet,status&id=" + ",".join(ids[k:k + 50]), tok)
+        for it in d.get("items", []):
+            if it["status"].get("publishAt"):
+                rows.append((it["status"]["publishAt"], it["id"], it["snippet"]["title"]))
+    for r in sorted(rows):
+        print(*r, sep="  ")
+
+
 def status(vid):
     tok = token()
     c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/videos?part=status,processingDetails,snippet&id={vid}", tok)
@@ -210,3 +232,4 @@ if __name__ == "__main__":
     {"check": check, "device-start": device_start, "device-poll": device_poll}.get(cmd, lambda: None)()
     if cmd == "upload": upload(sys.argv[2])
     if cmd == "status": status(sys.argv[2])
+    if cmd == "scheduled": scheduled()
