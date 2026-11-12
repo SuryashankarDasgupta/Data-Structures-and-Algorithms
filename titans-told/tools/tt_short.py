@@ -129,6 +129,7 @@ def main():
     ap.add_argument("--headline", required=True); ap.add_argument("--brand", default="")
     ap.add_argument("--min-len", type=float, default=8.0); ap.add_argument("--max-len", type=float, default=10.0)
     ap.add_argument("--tail", type=float, default=0.0, help="seconds added after the last word for the end card (owner plan 12 Nov: use 1.8)")
+    ap.add_argument("--fix", action="append", default=[], help='caption fix for a Whisper mishearing, e.g. --fix "Antropic=Anthropic"')
     a = ap.parse_args()
     tl = json.load(open(a.timeline))
     words = all_words(tl)
@@ -142,7 +143,12 @@ def main():
         sys.exit(f"clip is {dur:.2f} s: too short for a {a.min_len:g}-{a.max_len:g} s Short; pick a longer passage")
     total = max(a.min_len, dur + a.tail)
     print(f"clip {t0:.2f}-{t1:.2f} s = {dur:.2f} s (Short {total:.2f} s)")
-    clip_words = [w for w in words if w["s"] >= t0 - 0.05 and w["e"] <= t1 + 0.3]
+    clip_words = [dict(w) for w in words if w["s"] >= t0 - 0.05 and w["e"] <= t1 + 0.3]
+    fixes = dict(f.split("=", 1) for f in a.fix)
+    for w in clip_words:
+        core = re.sub(r"[^\w'$%-]", "", w["w"])
+        if core in fixes:
+            w["w"] = w["w"].replace(core, fixes[core])
     # caption chunks of up to 3 words, never across a sentence end
     chunks, cur = [], []
     for w in clip_words:
