@@ -157,7 +157,41 @@ MOOD_PROMPTS = {
 }
 
 
+LIB_USED = []
+LIB_ALIASES = {"tense": ["tense"], "dark": ["dark"], "driving": ["driving", "mystery"], "triumph": ["triumph"],
+               "reflective": ["reflective"], "mystery": ["mystery", "driving"], "urgent": ["urgent", "tense"]}
+
+
+def lib_music(mood, secs, idx):
+    """Owner, 12 Nov 2026: reuse the music library (TT_MUSIC_LIB or ../music next to tools/) instead of
+    generating new music per video. Loops the mood's track with 2 s crossfades; variant chosen by chapter index."""
+    import glob
+    lib = os.environ.get("TT_MUSIC_LIB") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "music")
+    files = []
+    for m in LIB_ALIASES.get(mood, [mood]):
+        files = sorted(glob.glob(os.path.join(lib, f"{m}_*.mp3")))
+        if files: break
+    if not files: return None
+    src = files[idx % len(files)]
+    wav = os.path.join("/tmp", "ttlib_" + os.path.basename(src)[:-4] + ".wav")
+    if not os.path.exists(wav): os.system(f'ffmpeg -v error -y -i "{src}" -ar {SR} -ac 2 "{wav}"')
+    w = wave.open(wav); a = np.frombuffer(w.readframes(w.getnframes()), np.int16).reshape(-1, 2) / 32768.0
+    start = int((idx * 37) % max(1, int(len(a) / SR - 60)) * SR)   # different start point per chapter
+    out = a[start:]
+    x = int(2 * SR); f = np.linspace(0, 1, x)[:, None]
+    while len(out) < secs * SR + x:
+        out = np.concatenate([out[:-x], out[-x:] * (1 - f) + a[:x] * f, a[x:]])
+    out = out[: int(secs * SR)]
+    print(f"music library: {mood} <- {os.path.basename(src)}"); LIB_USED.append(1)
+    rms = np.sqrt((out ** 2).mean()) + 1e-9
+    lvl = {"triumph": 1.12, "reflective": 0.9, "dark": 0.95}.get(mood, 1.0)
+    return out / rms * 0.08 * lvl
+
+
 def el_music(mood, secs, cache, idx):
+    if "--new-music" not in sys.argv:
+        lm = lib_music(mood, secs, idx)
+        if lm is not None: return lm
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key or "--synth" in sys.argv: return None
     os.makedirs(cache, exist_ok=True); parts = []; left = secs; k = 0
@@ -218,7 +252,7 @@ def main():
     for k, (a, b, mood) in enumerate(segs):
         a2 = max(0.0, a - xf / 2); b2 = min(T, b + xf / 2)
         trk = el_music(mood, b2 - a2 + 0.5, os.path.join(root, "music", "score_parts"), k)
-        music_src.append("elevenlabs" if trk is not None else "synth")
+        music_src.append(("library" if LIB_USED and LIB_USED.pop() else "elevenlabs-new") if trk is not None else "synth")
         if trk is None: trk = mood_track(mood, b2 - a2 + 0.5, seed + k)
         ln = int((b2 - a2) * SR)
         if len(trk) < ln: trk = np.concatenate([trk, np.zeros((ln - len(trk), 2))])
