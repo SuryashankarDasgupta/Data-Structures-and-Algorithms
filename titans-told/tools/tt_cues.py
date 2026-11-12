@@ -42,7 +42,10 @@ from collections import Counter
 uses = Counter()
 for sc in scenes:
     d = sc["end"] - sc["start"]
-    if sc.get("type") == "image":
+    if sc.get("type") == "clip":   # owner plan 12 Nov 2026: one 5 s AI hero clip in the hook
+        if d > 5.2:
+            problems.append(f"HERO CLIP TOO LONG {d:.1f}s at {sc['start']:.1f}s: max 5 s")
+    elif sc.get("type") == "image":
         if d > IMG_MAX:
             problems.append(f"IMAGE TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc['src']}): add another visual cue inside it")
     else:
@@ -51,13 +54,15 @@ for sc in scenes:
             lim = THREAD_MAX
         if d > lim:
             problems.append(f"GRAPHIC TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}, max {lim}s): add another visual cue inside it")
-    if sc["start"] < HOOK_END and d > HOOK_MAX:
+    if sc["start"] < HOOK_END and d > HOOK_MAX and sc.get("type") != "clip":
         problems.append(f"HOOK SHOT TOO LONG {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}): in the first 30 s cut at least every {HOOK_MAX}s")
     if d < 2.0 and sc is not scenes[0]:
         problems.append(f"SHOT TOO SHORT {d:.1f}s at {sc['start']:.1f}s ({sc.get('type')}): merge or move the cue")
     for o in (sc, sc.get("left") or {}, sc.get("right") or {}):
         if o.get("src"):
             uses[o["src"]] += 1
+    if sc.get("clip"):
+        uses[sc["clip"]] += 1
 seen_states = set()
 for sc in scenes:
     if sc.get("type") == "checklist" and "done" in sc:
@@ -66,7 +71,7 @@ for sc in scenes:
             problems.append(f"THREAD GRAPHIC REPEATED WITH NO CHANGE at {sc['start']:.1f}s: tick a new item or move 'active'")
         seen_states.add(st)
 outro_t = next((sec["start"] for sec in tl if sec["section"] == "OUTRO"), total)
-rehooks = [sc["start"] for sc in scenes if sc.get("motion") == "punch" or sc.get("type") in ("counter", "headline", "split")]
+rehooks = [sc["start"] for sc in scenes if sc.get("motion") == "punch" or sc.get("type") in ("counter", "headline", "split", "clip")]
 marks = [HOOK_END] + [r for r in rehooks if HOOK_END <= r <= outro_t] + [outro_t]
 for a_, b_ in zip(marks, marks[1:]):
     if b_ - a_ > REHOOK_GAP:

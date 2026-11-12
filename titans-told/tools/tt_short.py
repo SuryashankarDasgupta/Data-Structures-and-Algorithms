@@ -10,7 +10,7 @@ Usage:
                   the clip runs from the first word of --from to the last word of --to (+0.25 s tail).
   --start/--end   explicit seconds instead of phrases.
   --headline      big caps text in the top band; "|" splits lines (2 lines max recommended).
-The clip must be 8.0-10.0 s; shorter clips are held on the last frame up to 8 s, longer ones are refused
+Default 8.0-10.0 s (old style). Owner plan 12 Nov 2026: cut 20-40 s Shorts with --min-len 20 --max-len 40 --tail 1.8 (end card after the last word); shorter clips are held on the last frame, longer ones are refused
 (pick a tighter sentence). Layout: blurred full-bleed background, the 16:9 picture full width in the middle
 (tracker band cropped off), word-by-word captions under it (current word gold), and a closing
 "FULL STORY ON THE CHANNEL" call to action in the last 1.6 s. Audio = the original mix, normalised to -14 LUFS.
@@ -127,6 +127,8 @@ def main():
     ap.add_argument("--from", dest="frm"); ap.add_argument("--to")
     ap.add_argument("--start", type=float); ap.add_argument("--end", type=float)
     ap.add_argument("--headline", required=True); ap.add_argument("--brand", default="")
+    ap.add_argument("--min-len", type=float, default=8.0); ap.add_argument("--max-len", type=float, default=10.0)
+    ap.add_argument("--tail", type=float, default=0.0, help="seconds added after the last word for the end card (owner plan 12 Nov: use 1.8)")
     a = ap.parse_args()
     tl = json.load(open(a.timeline))
     words = all_words(tl)
@@ -134,9 +136,11 @@ def main():
     t1 = a.end if a.end is not None else find_phrase(words, a.to, after=t0, last=True) + 0.25
     t0 = max(0.0, t0 - 0.12)
     dur = t1 - t0
-    if dur > 10.0:
-        sys.exit(f"clip is {dur:.2f} s: Shorts must be 8-10 s; pick a tighter sentence")
-    total = max(8.0, dur)
+    if dur > a.max_len:
+        sys.exit(f"clip is {dur:.2f} s: Shorts must be {a.min_len:g}-{a.max_len:g} s; pick a tighter passage")
+    if a.tail == 0 and dur < a.min_len - 2.5:
+        sys.exit(f"clip is {dur:.2f} s: too short for a {a.min_len:g}-{a.max_len:g} s Short; pick a longer passage")
+    total = max(a.min_len, dur + a.tail)
     print(f"clip {t0:.2f}-{t1:.2f} s = {dur:.2f} s (Short {total:.2f} s)")
     clip_words = [w for w in words if w["s"] >= t0 - 0.05 and w["e"] <= t1 + 0.3]
     # caption chunks of up to 3 words, never across a sentence end

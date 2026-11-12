@@ -713,6 +713,32 @@ def draw_frame3d(scene, t, dur):
     return base.convert("RGB")
 
 
+_CLIPS = {}
+def clip_frame(scene, t):
+    """Frame from a pre-rendered MP4 (parallax / hero / stock), read sequentially, resized to the canvas."""
+    import cv2
+    path = scene["clip"]
+    cap, last, img = _CLIPS.get(path, (None, -1, None))
+    if cap is None:
+        cap = cv2.VideoCapture(path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
+    want = min(n - 1, int(t * fps * scene.get("speed", 1.0)))
+    if want < last:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, want); last = want - 1
+    while last < want:
+        ok, fr = cap.read()
+        if not ok: break
+        img = fr; last += 1
+    _CLIPS[path] = (cap, last, img)
+    if img is None:
+        return Image.new("RGB", (W, H))
+    im = Image.fromarray(img[:, :, ::-1])
+    if im.size != (W, H):
+        im = im.resize((W, H), Image.LANCZOS)
+    return im
+
+
 def scene_frame(scene, t):
     dur = scene["end"] - scene["start"]
     typ = scene.get("type", "image")
@@ -720,6 +746,12 @@ def scene_frame(scene, t):
         im = living_image(load_img(scene["src"]), t, dur, scene)
         fxk = scene.get("fx", "dust") if DEPTH else "none"
         pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100))
+        if pl is not None:
+            im = im.convert("RGBA"); im.alpha_composite(pl); im = im.convert("RGB")
+    elif typ == "clip":   # owner plan 12 Nov 2026: AI hero clip (or other pre-rendered footage) in the hook
+        im = clip_frame(scene, t)
+        fxk = scene.get("fx", "none")
+        pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100)) if (fxk != "none" and DEPTH) else None
         if pl is not None:
             im = im.convert("RGBA"); im.alpha_composite(pl); im = im.convert("RGB")
     elif typ == "card":
