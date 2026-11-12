@@ -129,6 +129,8 @@ def main():
     ap.add_argument("--headline", required=True); ap.add_argument("--brand", default="")
     ap.add_argument("--min-len", type=float, default=8.0); ap.add_argument("--max-len", type=float, default=10.0)
     ap.add_argument("--tail", type=float, default=0.0, help="seconds added after the last word for the end card (owner plan 12 Nov: use 1.8)")
+    ap.add_argument("--open-clip", help="hero clip shown in the picture area for the first --open-secs (owner, 12 Nov 2026: open each Short with the video's hero clip)")
+    ap.add_argument("--open-secs", type=float, default=2.5)
     ap.add_argument("--fix", action="append", default=[], help='caption fix for a Whisper mishearing, e.g. --fix "Antropic=Anthropic"')
     a = ap.parse_args()
     tl = json.load(open(a.timeline))
@@ -162,7 +164,13 @@ def main():
     vf = (f"[0:v]trim=start={t0}:duration={dur},setpts=PTS-STARTPTS,fps={FPS},crop=iw:ih*0.935:0:ih*0.065,split[a][b];"
           f"[a]scale=-2:{H},crop={W}:{H},boxblur=24:2,eq=brightness=-0.18:saturation=0.85[bg];"
           f"[b]scale={W}:{FG_H}[fg];[bg][fg]overlay=0:{FG_Y},tpad=stop_mode=clone:stop_duration={total - dur:.3f}[v]")
-    rd = subprocess.Popen(["ffmpeg", "-v", "error", "-i", a.src, "-filter_complex", vf, "-map", "[v]",
+    ins = ["-i", a.src]
+    if a.open_clip:
+        vf = vf.replace("[v]", "[v0]")
+        vf += (f";[1:v]trim=duration={a.open_secs},setpts=PTS-STARTPTS,fps={FPS},scale={W}:{FG_H},setsar=1[cl];"
+               f"[v0][cl]overlay=0:{FG_Y}:eof_action=pass[v]")
+        ins += ["-i", a.open_clip]
+    rd = subprocess.Popen(["ffmpeg", "-v", "error", *ins, "-filter_complex", vf, "-map", "[v]",
                            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
     tmpv = a.out + ".v.mp4"
     wr = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
