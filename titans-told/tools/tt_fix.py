@@ -1,6 +1,8 @@
 """Titans Told sentence re-voice + splice (owner, 12 Nov 2026: "re-voice ONLY the fault").
 
-usage: tt_fix.py vo/ "SECTION" "<the faulty sentence exactly as in script.md (tags allowed)>" [--fix-text "<new wording>"]
+usage: tt_fix.py vo/ "SECTION" "<the faulty sentence exactly as in script.md (tags allowed)>" [--fix-text "<new wording>"] [--insert]
+(--insert: --fix-text = the sentence plus new sentences after it, for a late fact added to a finished voiceover;
+ then also put the new text into script.md and manifest.json "text"/"ref" of that section, never re-run tt_vo on it)
 
 - Re-voices ONLY that sentence on the SAME account as the video (vo/account.txt), same voice/model/settings,
   with the neighbouring sentences sent as previous_text/next_text for matching intonation.
@@ -19,6 +21,8 @@ VOICE = "uju3wxzG5OhpWcoi3SMy"; MODEL = "eleven_v3"; STABILITY = 0.5; SR = 44100
 TAG = re.compile(r"\[[^\[\]]{1,40}\]")
 vo, section, sentence = sys.argv[1], sys.argv[2], sys.argv[3]
 newtext = sys.argv[sys.argv.index("--fix-text") + 1] if "--fix-text" in sys.argv else sentence
+INSERT = "--insert" in sys.argv
+REUSE = sys.argv[sys.argv.index("--reuse") + 1] if "--reuse" in sys.argv else None   # splice an already-paid take (no new charge)   # the new text deliberately adds sentences: skip the length check
 acc = open(os.path.join(vo, "account.txt")).read().strip() if os.path.exists(os.path.join(vo, "account.txt")) else "ELEVENLABS_API_KEY"
 KEY = os.environ.get(acc) or sys.exit(f"voice key {acc} (this video's account) not available")
 man = json.load(open(os.path.join(vo, "manifest.json")))
@@ -28,7 +32,7 @@ logp = os.path.join(vo, "revoice_log.json")
 log = json.load(open(logp)) if os.path.exists(logp) else {"chars": 0, "fixes": []}
 key_s = re.sub(r"\s+", " ", TAG.sub(" ", sentence)).strip()
 tries = sum(1 for f in log["fixes"] if f["sentence"] == key_s)
-if tries >= 2: print("2 takes already used for this sentence: keep the better one (no 3rd take)"); sys.exit(5)
+if tries >= 2 and not REUSE: print("2 takes already used for this sentence: keep the better one (no 3rd take)"); sys.exit(5)
 
 norm = lambda w: re.sub(r"[^a-z0-9]", "", w.lower())
 ref_tok = [t for t in re.split(r"\s+", c["ref"]) if norm(t)]
@@ -80,18 +84,23 @@ take = os.path.join(vo, c["file"]); orig = take[:-4] + ".orig.mp3"
 if not os.path.exists(orig): subprocess.run(["cp", take, orig], check=True)
 old = load(take); s0, s1 = int(t0 * SR), int(t1 * SR); seg = old[s0:s1]
 spoken = re.sub(r"\s+", " ", newtext).strip()
-newp = os.path.join(vo, f"fix_{int(time.time())}.mp3"); tts(spoken, newp)
-log["chars"] += len(spoken); log["fixes"].append({"section": section, "sentence": key_s, "chars": len(spoken), "t": [round(t0, 2), round(t1, 2)]})
-json.dump(log, open(logp, "w"), indent=1)
+if REUSE:
+    newp = REUSE
+else:
+    newp = os.path.join(vo, f"fix_{int(time.time())}.mp3"); tts(spoken, newp)
+    log["chars"] += len(spoken); log["fixes"].append({"section": section, "sentence": key_s, "chars": len(spoken), "t": [round(t0, 2), round(t1, 2)], "file": os.path.basename(newp)})
+    json.dump(log, open(logp, "w"), indent=1)
 new = trim(load(newp))
 # keep the old leading/trailing pause lengths
 lead = trim(seg); pad0 = max(0, len(seg) - len(lead)) // 2
 new = new * (rms(trim(seg)) / rms(new))
-ctx_a = old[max(0, s0 - 3 * SR):s0]; ctx_b = old[s1:s1 + 3 * SR]; ctx = np.concatenate([ctx_a, ctx_b])
-ld = 20 * np.log10(rms(new) / rms(trim(seg))); cn, cc = cent(new), cent(trim(ctx) if len(ctx) else trim(seg))
+# tone: the new take's brightness must sit inside the take's own natural range (8 s windows) +-10%
+wins = [cent(old[i:i + 8 * SR]) for i in range(0, max(1, len(old) - 8 * SR), 8 * SR)] or [cent(old)]
+lo, hi = min(wins) * 0.9, max(wins) * 1.1
+ld = 20 * np.log10(rms(new) / rms(trim(seg))); cn = cent(new)
 ratio = len(new) / max(1, len(trim(seg)))
-ok = abs(ld) <= 1.5 and (cc == 0 or abs(cn - cc) / cc <= 0.20) and 0.6 <= ratio <= 1.7
-print(f"splice {section} {t0:.2f}-{t1:.2f}s | {len(spoken)} chars | loudness {ld:+.1f} dB | brightness {cn:.0f} vs {cc:.0f} Hz | length x{ratio:.2f} | {'PASS' if ok else 'FAIL'}")
+ok = abs(ld) <= 1.5 and lo <= cn <= hi and (INSERT or 0.6 <= ratio <= 1.7)
+print(f"splice {section} {t0:.2f}-{t1:.2f}s | {0 if REUSE else len(spoken)} new chars | loudness {ld:+.1f} dB | brightness {cn:.0f} Hz (take range {lo:.0f}-{hi:.0f}) | length x{ratio:.2f} | {'PASS' if ok else 'FAIL'}")
 if not ok:
     print("splice check failed: try once more (2 takes max); after 2 failed splices re-voice the whole section"); sys.exit(4)
 gap = np.zeros(int(0.06 * SR), np.float32); x = int(0.03 * SR); f = np.linspace(0, 1, x)
@@ -103,5 +112,6 @@ out = np.clip(np.concatenate([A, body, B]), -1, 1)
 tmp = take[:-4] + ".tmp.wav"; w = wave.open(tmp, "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
 w.writeframes((out * 32767).astype(np.int16).tobytes()); w.close()
 subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-ar", str(SR), "-ac", "1", "-b:a", "192k", take], check=True)
-os.remove(tmp); os.remove(newp)
+os.remove(tmp)
+if os.path.dirname(os.path.abspath(newp)) == os.path.abspath(vo): os.remove(newp)
 print(f"spliced into {c['file']} (original kept as {os.path.basename(orig)}); re-voice characters this video: {log['chars']}")

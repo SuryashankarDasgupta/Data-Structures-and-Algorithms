@@ -166,10 +166,14 @@ def lib_music(mood, secs, idx):
     """Owner, 12 Nov 2026: reuse the music library (TT_MUSIC_LIB or ../music next to tools/) instead of
     generating new music per video. Loops the mood's track with 2 s crossfades; variant chosen by chapter index."""
     import glob
-    lib = os.environ.get("TT_MUSIC_LIB") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "music")
+    here = os.path.dirname(os.path.abspath(__file__))
+    libs = [os.environ.get("TT_MUSIC_LIB"), os.path.join(here, "..", "music"), os.path.join(here, "music"),
+            "/tmp/ttrepo/titans-told/music", os.path.expanduser("~/tt/music")]
     files = []
-    for m in LIB_ALIASES.get(mood, [mood]):
-        files = sorted(glob.glob(os.path.join(lib, f"{m}_*.mp3")))
+    for lib in [l for l in libs if l and os.path.isdir(l)]:
+        for m in LIB_ALIASES.get(mood, [mood]):
+            files = sorted(glob.glob(os.path.join(lib, f"{m}_*.mp3")))
+            if files: break
         if files: break
     if not files: return None
     src = files[idx % len(files)]
@@ -192,6 +196,8 @@ def el_music(mood, secs, cache, idx):
     if "--new-music" not in sys.argv:
         lm = lib_music(mood, secs, idx)
         if lm is not None: return lm
+        print(f"music library not found for {mood}: using the built-in synth (no ElevenLabs music without --new-music)")
+        return None
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key or "--synth" in sys.argv: return None
     os.makedirs(cache, exist_ok=True); parts = []; left = secs; k = 0
