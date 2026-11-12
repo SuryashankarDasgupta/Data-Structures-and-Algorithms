@@ -12,6 +12,18 @@ TAG = re.compile(r"\[[^\[\]]{1,40}\]")
 PACE = re.compile(r"^\s*\{(fast|steady|slow)\}\s*")
 script, outdir = sys.argv[1], sys.argv[2]
 os.makedirs(outdir, exist_ok=True)
+# Voice account (owner decision 12 Nov 2026): TT_EL_KEY names the env var holding the key
+# (ELEVENLABS_API_KEY_2 = Creator account, ELEVENLABS_API_KEY = shared Pro). One video = one account:
+# the first run records the account in vo/account.txt and later runs refuse a different one.
+KEYVAR = os.environ.get("TT_EL_KEY", "ELEVENLABS_API_KEY")
+if KEYVAR not in ("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY_2") or not os.environ.get(KEYVAR):
+    raise SystemExit(f"voice key {KEYVAR} not available")
+acc = os.path.join(outdir, "account.txt")
+if os.path.exists(acc) and open(acc).read().strip() != KEYVAR:
+    raise SystemExit(f"this video was voiced on {open(acc).read().strip()}; never mix accounts in one video "
+                     f"(re-voice the whole video on one account by deleting {outdir}/t_*.mp3 and {acc})")
+open(acc, "w").write(KEYVAR)
+NEW_CHARS = 0
 s = open(script).read()
 parts = re.split(r"^\[\[(.*?)\]\]\s*$", s, flags=re.M)
 chunks = []
@@ -39,7 +51,7 @@ def tts(text, path):
         f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE}?output_format=mp3_44100_192",
         data=json.dumps({"text": text, "model_id": MODEL,
                          "voice_settings": {"stability": STABILITY, "similarity_boost": 0.8}}).encode(),
-        headers={"xi-api-key": os.environ["ELEVENLABS_API_KEY"], "Content-Type": "application/json"})
+        headers={"xi-api-key": os.environ[KEYVAR], "Content-Type": "application/json"})
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
@@ -55,8 +67,9 @@ for c in chunks:
     c["file"] = "t_" + hashlib.sha1(c["text"].encode()).hexdigest()[:10] + ".mp3"; p = os.path.join(outdir, c["file"])
     if not os.path.exists(p):
         assert len(c["text"]) <= 4800, c["section"]
-        tts(c["text"], p)
+        tts(c["text"], p); NEW_CHARS += len(c["text"])
     c["dur"] = dur(p); w = len(re.findall(r"[A-Za-z0-9'’.,$-]+", c["ref"]))
     c["wpm"] = round(w / (c["dur"] / 60)); print(c["file"], c["section"], len(c["text"]), f'{c["dur"]:.1f}s', c["wpm"], "wpm",
                                                  "paces:", "".join(x["pace"][0] for x in c["paras"]), flush=True)
 json.dump(chunks, open(os.path.join(outdir, "manifest.json"), "w"), indent=1)
+print(f"voice account: {KEYVAR} | new characters this run: {NEW_CHARS}")
