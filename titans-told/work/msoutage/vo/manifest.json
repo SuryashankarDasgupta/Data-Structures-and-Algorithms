@@ -1,0 +1,318 @@
+[
+ {
+  "section": "HOOK",
+  "text": "[tense] On Thursday, November twelfth, twenty twenty-six, Microsoft's email and work apps started failing around the world.\n\n[urgent] Within an hour, Downdetector logged complaints from seventy-four countries and territories, and Outlook reports climbed to around one hundred and thirty thousand. [[beat]]\n\n[intrigued] Yet Microsoft says it was not a cyberattack, and not a flood of traffic either. [serious] To understand what really broke, we have to look inside the servers.",
+  "ref": "On Thursday, November twelfth, twenty twenty-six, Microsoft's email and work apps started failing around the world. Within an hour, Downdetector logged complaints from seventy-four countries and territories, and Outlook reports climbed to around one hundred and thirty thousand. [ ] Yet Microsoft says it was not a cyberattack, and not a flood of traffic either. To understand what really broke, we have to look inside the servers.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "On Thursday, November twelfth, twenty twenty-six, Microsoft's email and work apps started failing around the world."
+   },
+   {
+    "pace": "fast",
+    "ref": "Within an hour, Downdetector logged complaints from seventy-four countries and territories, and Outlook reports climbed to around one hundred and thirty thousand. [ ]"
+   },
+   {
+    "pace": "steady",
+    "ref": "Yet Microsoft says it was not a cyberattack, and not a flood of traffic either. To understand what really broke, we have to look inside the servers."
+   }
+  ],
+  "file": "t_65a5dfb637.mp3",
+  "dur": 25.80898,
+  "wpm": 151
+ },
+ {
+  "section": "QUESTION",
+  "text": "[tense] And this is not even the first big Microsoft outage this year. It is part of a pattern that keeps knocking out the internet.\n\n[curious] So how can one fault inside one company stop banks, courts and police on the other side of the planet, and why do these outages keep getting bigger?",
+  "ref": "And this is not even the first big Microsoft outage this year. It is part of a pattern that keeps knocking out the internet. So how can one fault inside one company stop banks, courts and police on the other side of the planet, and why do these outages keep getting bigger?",
+  "paras": [
+   {
+    "pace": "fast",
+    "ref": "And this is not even the first big Microsoft outage this year. It is part of a pattern that keeps knocking out the internet."
+   },
+   {
+    "pace": "slow",
+    "ref": "So how can one fault inside one company stop banks, courts and police on the other side of the planet, and why do these outages keep getting bigger?"
+   }
+  ],
+  "file": "t_8c88e77aea.mp3",
+  "dur": 15.647347,
+  "wpm": 199
+ },
+ {
+  "section": "ACT 1",
+  "text": "[serious] Here is how the day unfolded, based on Microsoft's own status updates and reports from SecurityWeek, CIO and IBTimes. All times are in universal time.\n\n[urgent] At sixteen seventeen, Microsoft opens an incident for Exchange Online, the system behind Outlook email. People cannot open their mailboxes on the web, in the desktop app or on their phones. Emails arrive late, or not at all.\n\n[tense] At first, the problem looks local, with users in the Americas. Within about two hours, Microsoft warns that users in any region could be affected, and it opens a second, wider incident for everything that depends on Exchange.\n\n[tense] Teams calendars stop loading. Copilot Chat stumbles. Even Defender, Microsoft's security service, cannot check some links in emails. Teams chat and meetings mostly keep working, but scheduling them does not.\n\n[curious] By the evening, Microsoft pauses all software deployments and configuration changes. That is the corporate equivalent of everyone stepping away from the machine.\n\n[hopeful] Then, a glimmer. Microsoft says it is returning a portion of the affected servers to service, and that they remain stable so far.\n\n[ominous] But it does not last. Once those servers start receiving traffic again, many of them become unresponsive again. [[beat]] By Friday morning in London, the outage has run for more than twelve hours, and Microsoft still has no estimate for full recovery.",
+  "ref": "Here is how the day unfolded, based on Microsoft's own status updates and reports from SecurityWeek, CIO and IBTimes. All times are in universal time. At sixteen seventeen, Microsoft opens an incident for Exchange Online, the system behind Outlook email. People cannot open their mailboxes on the web, in the desktop app or on their phones. Emails arrive late, or not at all. At first, the problem looks local, with users in the Americas. Within about two hours, Microsoft warns that users in any region could be affected, and it opens a second, wider incident for everything that depends on Exchange. Teams calendars stop loading. Copilot Chat stumbles. Even Defender, Microsoft's security service, cannot check some links in emails. Teams chat and meetings mostly keep working, but scheduling them does not. By the evening, Microsoft pauses all software deployments and configuration changes. That is the corporate equivalent of everyone stepping away from the machine. Then, a glimmer. Microsoft says it is returning a portion of the affected servers to service, and that they remain stable so far. But it does not last. Once those servers start receiving traffic again, many of them become unresponsive again. [ ] By Friday morning in London, the outage has run for more than twelve hours, and Microsoft still has no estimate for full recovery.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "Here is how the day unfolded, based on Microsoft's own status updates and reports from SecurityWeek, CIO and IBTimes. All times are in universal time."
+   },
+   {
+    "pace": "fast",
+    "ref": "At sixteen seventeen, Microsoft opens an incident for Exchange Online, the system behind Outlook email. People cannot open their mailboxes on the web, in the desktop app or on their phones. Emails arrive late, or not at all."
+   },
+   {
+    "pace": "steady",
+    "ref": "At first, the problem looks local, with users in the Americas. Within about two hours, Microsoft warns that users in any region could be affected, and it opens a second, wider incident for everything that depends on Exchange."
+   },
+   {
+    "pace": "fast",
+    "ref": "Teams calendars stop loading. Copilot Chat stumbles. Even Defender, Microsoft's security service, cannot check some links in emails. Teams chat and meetings mostly keep working, but scheduling them does not."
+   },
+   {
+    "pace": "steady",
+    "ref": "By the evening, Microsoft pauses all software deployments and configuration changes. That is the corporate equivalent of everyone stepping away from the machine."
+   },
+   {
+    "pace": "steady",
+    "ref": "Then, a glimmer. Microsoft says it is returning a portion of the affected servers to service, and that they remain stable so far."
+   },
+   {
+    "pace": "slow",
+    "ref": "But it does not last. Once those servers start receiving traffic again, many of them become unresponsive again. [ ] By Friday morning in London, the outage has run for more than twelve hours, and Microsoft still has no estimate for full recovery."
+   }
+  ],
+  "file": "t_f98fb59829.mp3",
+  "dur": 84.924082,
+  "wpm": 154
+ },
+ {
+  "section": "ACT 2",
+  "text": "[serious] So who actually felt it? Microsoft 365 has more than four hundred and fifty million paid commercial seats, according to IBTimes. Microsoft has not said how many of them were hit. But the stories tell you how deep it went.\n\n[tense] In Australia, it is already Friday. Australia's spy agency, ASIO, and the Australian Federal Police are affected. Service NSW centres close in regional New South Wales, and the state's online bail court is disrupted, according to IBTimes.\n\n[serious] Australia's Home Affairs Minister, Tony Burke, says Microsoft told the government, \"They do not believe they are dealing with a cyber event.\" And Australia invokes a recovery-priority clause in an agreement it signed with Microsoft in June.\n\n[urgent] In Hong Kong, bankers at Morgan Stanley and Goldman Sachs told CNN their work was disrupted. In New York, the city's emergency management office warns that email to city agencies could be delayed.\n\n[knowing] And where there is chaos, there are scammers. ING Australia warns customers that criminals are exploiting the outage to send fake messages.\n\n[curious] Even the AI companies notice. OpenAI and Anthropic report problems with the tools that connect their AI services to Microsoft three sixty-five, according to The Conversation.\n\n[reflective] Picture what that means for a normal Thursday. A lawyer cannot send a filing. A teacher cannot reach remote students. A small business cannot see its orders. None of them did anything wrong. They simply ran on the same system.",
+  "ref": "So who actually felt it? Microsoft 365 has more than four hundred and fifty million paid commercial seats, according to IBTimes. Microsoft has not said how many of them were hit. But the stories tell you how deep it went. In Australia, it is already Friday. Australia's spy agency, ASIO, and the Australian Federal Police are affected. Service NSW centres close in regional New South Wales, and the state's online bail court is disrupted, according to IBTimes. Australia's Home Affairs Minister, Tony Burke, says Microsoft told the government, \"They do not believe they are dealing with a cyber event.\" And Australia invokes a recovery-priority clause in an agreement it signed with Microsoft in June. In Hong Kong, bankers at Morgan Stanley and Goldman Sachs told CNN their work was disrupted. In New York, the city's emergency management office warns that email to city agencies could be delayed. And where there is chaos, there are scammers. ING Australia warns customers that criminals are exploiting the outage to send fake messages. Even the AI companies notice. OpenAI and Anthropic report problems with the tools that connect their AI services to Microsoft three sixty-five, according to The Conversation. Picture what that means for a normal Thursday. A lawyer cannot send a filing. A teacher cannot reach remote students. A small business cannot see its orders. None of them did anything wrong. They simply ran on the same system.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "So who actually felt it? Microsoft 365 has more than four hundred and fifty million paid commercial seats, according to IBTimes. Microsoft has not said how many of them were hit. But the stories tell you how deep it went."
+   },
+   {
+    "pace": "fast",
+    "ref": "In Australia, it is already Friday. Australia's spy agency, ASIO, and the Australian Federal Police are affected. Service NSW centres close in regional New South Wales, and the state's online bail court is disrupted, according to IBTimes."
+   },
+   {
+    "pace": "steady",
+    "ref": "Australia's Home Affairs Minister, Tony Burke, says Microsoft told the government, \"They do not believe they are dealing with a cyber event.\" And Australia invokes a recovery-priority clause in an agreement it signed with Microsoft in June."
+   },
+   {
+    "pace": "fast",
+    "ref": "In Hong Kong, bankers at Morgan Stanley and Goldman Sachs told CNN their work was disrupted. In New York, the city's emergency management office warns that email to city agencies could be delayed."
+   },
+   {
+    "pace": "steady",
+    "ref": "And where there is chaos, there are scammers. ING Australia warns customers that criminals are exploiting the outage to send fake messages."
+   },
+   {
+    "pace": "steady",
+    "ref": "Even the AI companies notice. OpenAI and Anthropic report problems with the tools that connect their AI services to Microsoft three sixty-five, according to The Conversation."
+   },
+   {
+    "pace": "slow",
+    "ref": "Picture what that means for a normal Thursday. A lawyer cannot send a filing. A teacher cannot reach remote students. A small business cannot see its orders. None of them did anything wrong. They simply ran on the same system."
+   }
+  ],
+  "file": "t_8fa32befbe.mp3",
+  "dur": 91.480816,
+  "wpm": 154
+ },
+ {
+  "section": "ACT 3",
+  "text": "[curious] So what went wrong? Microsoft's explanation changed several times as the night went on, and that alone tells a story.\n\n[serious] First, it pointed to elevated load across multiple regions. Then it corrected itself. The elevated load, it said, \"isn't driven by an overall increase in traffic, but by a large number of servers being unexpectedly unavailable.\"\n\n[knowing] Next, it narrowed it down. Servers were failing automated health checks, and \"a process on the affected servers responsible for establishing secure connections becomes overwhelmed, causing the servers to stop processing requests.\"\n\n[curious] Picture a hospital nurse who sends unwell patients home to rest. Big server fleets have a similar system, called health checks, that pulls sick machines out of service so they do not slow everyone else down.\n\n[tense] But if the checker itself goes wrong, it starts sending healthy machines home too. Fewer servers means more work for the ones left. They get overwhelmed, fail their own checks, and get pulled out as well. Engineers call that a cascading failure.\n\n[serious] Then came the twist. Microsoft had first said it found no recent change that matched the start of the problem. Overnight, according to SecurityWeek and CIO, it began reverting a recent network configuration change that coincided with the start of the disruption.\n\n[skeptical] That is a lead, not a verdict. As of Friday, Microsoft had not confirmed a root cause, and SecurityWeek noted it had yet to explain why the health checks failed in the first place.\n\n[serious] Microsoft executive vice president Charles Lamanna wrote on X, \"We regret that today's outages caused disruptions for our customers.\" He added that there is \"no indication this is the result of malicious or cyber activity.\"",
+  "ref": "So what went wrong? Microsoft's explanation changed several times as the night went on, and that alone tells a story. First, it pointed to elevated load across multiple regions. Then it corrected itself. The elevated load, it said, \"isn't driven by an overall increase in traffic, but by a large number of servers being unexpectedly unavailable.\" Next, it narrowed it down. Servers were failing automated health checks, and \"a process on the affected servers responsible for establishing secure connections becomes overwhelmed, causing the servers to stop processing requests.\" Picture a hospital nurse who sends unwell patients home to rest. Big server fleets have a similar system, called health checks, that pulls sick machines out of service so they do not slow everyone else down. But if the checker itself goes wrong, it starts sending healthy machines home too. Fewer servers means more work for the ones left. They get overwhelmed, fail their own checks, and get pulled out as well. Engineers call that a cascading failure. Then came the twist. Microsoft had first said it found no recent change that matched the start of the problem. Overnight, according to SecurityWeek and CIO, it began reverting a recent network configuration change that coincided with the start of the disruption. That is a lead, not a verdict. As of Friday, Microsoft had not confirmed a root cause, and SecurityWeek noted it had yet to explain why the health checks failed in the first place. Microsoft executive vice president Charles Lamanna wrote on X, \"We regret that today's outages caused disruptions for our customers.\" He added that there is \"no indication this is the result of malicious or cyber activity.\"",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "So what went wrong? Microsoft's explanation changed several times as the night went on, and that alone tells a story."
+   },
+   {
+    "pace": "steady",
+    "ref": "First, it pointed to elevated load across multiple regions. Then it corrected itself. The elevated load, it said, \"isn't driven by an overall increase in traffic, but by a large number of servers being unexpectedly unavailable.\""
+   },
+   {
+    "pace": "slow",
+    "ref": "Next, it narrowed it down. Servers were failing automated health checks, and \"a process on the affected servers responsible for establishing secure connections becomes overwhelmed, causing the servers to stop processing requests.\""
+   },
+   {
+    "pace": "steady",
+    "ref": "Picture a hospital nurse who sends unwell patients home to rest. Big server fleets have a similar system, called health checks, that pulls sick machines out of service so they do not slow everyone else down."
+   },
+   {
+    "pace": "fast",
+    "ref": "But if the checker itself goes wrong, it starts sending healthy machines home too. Fewer servers means more work for the ones left. They get overwhelmed, fail their own checks, and get pulled out as well. Engineers call that a cascading failure."
+   },
+   {
+    "pace": "steady",
+    "ref": "Then came the twist. Microsoft had first said it found no recent change that matched the start of the problem. Overnight, according to SecurityWeek and CIO, it began reverting a recent network configuration change that coincided with the start of the disruption."
+   },
+   {
+    "pace": "steady",
+    "ref": "That is a lead, not a verdict. As of Friday, Microsoft had not confirmed a root cause, and SecurityWeek noted it had yet to explain why the health checks failed in the first place."
+   },
+   {
+    "pace": "slow",
+    "ref": "Microsoft executive vice president Charles Lamanna wrote on X, \"We regret that today's outages caused disruptions for our customers.\" He added that there is \"no indication this is the result of malicious or cyber activity.\""
+   }
+  ],
+  "file": "t_6949ef5095.mp3",
+  "dur": 107.72898,
+  "wpm": 154
+ },
+ {
+  "section": "SUBSCRIBE",
+  "text": "[warm] Quick pause. If you want clear, fact-checked stories about how the giants of tech work, and how they break, subscribe to Titans Told. Now, back to the suspects.",
+  "ref": "Quick pause. If you want clear, fact-checked stories about how the giants of tech work, and how they break, subscribe to Titans Told. Now, back to the suspects.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "Quick pause. If you want clear, fact-checked stories about how the giants of tech work, and how they break, subscribe to Titans Told. Now, back to the suspects."
+   }
+  ],
+  "file": "t_26d81bd5ef.mp3",
+  "dur": 10.187755,
+  "wpm": 165
+ },
+ {
+  "section": "ACT 4",
+  "text": "[curious] While Microsoft searched for answers, everyone else started guessing. Across forums, social media and newsrooms, the same suspects came up again and again.\n\n[tense] Suspect number one was a cyberattack. When Outlook goes dark in seventy-four countries at once, many people assume someone did it on purpose. Outlets ran headlines asking exactly that.\n\n[knowing] But the evidence points the other way. Microsoft, Australia's government and SecurityWeek all say there is no sign of malicious activity. And history backs them up. When Cloudflare went down in November twenty twenty-five, many first suspected an attack. It turned out to be a single oversized configuration file.\n\n[curious] Suspect number two was Patch Tuesday. Just two days earlier, Microsoft had released its November security updates, fixing more than a thousand vulnerabilities, including an Outlook flaw that was already being exploited. SecurityWeek pointed out the timing, but Microsoft's advisories have not linked those updates to the outage.\n\n[serious] Suspect number three was a bad change pushed to the network. This is the one Microsoft itself is now chasing, with the rollback of that network configuration change. It fits the pattern of most big outages, but until the post-incident report arrives, it is still a suspect, not a conviction.\n\n[knowing] And suspect number four was the secure-connection system itself, the part of every server that sets up encrypted links. One independent test reported in the coverage found connections to Outlook opening, but the secure handshake never finishing. That matches what Microsoft described. It explains how the servers failed, but not yet why.",
+  "ref": "While Microsoft searched for answers, everyone else started guessing. Across forums, social media and newsrooms, the same suspects came up again and again. Suspect number one was a cyberattack. When Outlook goes dark in seventy-four countries at once, many people assume someone did it on purpose. Outlets ran headlines asking exactly that. But the evidence points the other way. Microsoft, Australia's government and SecurityWeek all say there is no sign of malicious activity. And history backs them up. When Cloudflare went down in November twenty twenty-five, many first suspected an attack. It turned out to be a single oversized configuration file. Suspect number two was Patch Tuesday. Just two days earlier, Microsoft had released its November security updates, fixing more than a thousand vulnerabilities, including an Outlook flaw that was already being exploited. SecurityWeek pointed out the timing, but Microsoft's advisories have not linked those updates to the outage. Suspect number three was a bad change pushed to the network. This is the one Microsoft itself is now chasing, with the rollback of that network configuration change. It fits the pattern of most big outages, but until the post-incident report arrives, it is still a suspect, not a conviction. And suspect number four was the secure-connection system itself, the part of every server that sets up encrypted links. One independent test reported in the coverage found connections to Outlook opening, but the secure handshake never finishing. That matches what Microsoft described. It explains how the servers failed, but not yet why.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "While Microsoft searched for answers, everyone else started guessing. Across forums, social media and newsrooms, the same suspects came up again and again."
+   },
+   {
+    "pace": "fast",
+    "ref": "Suspect number one was a cyberattack. When Outlook goes dark in seventy-four countries at once, many people assume someone did it on purpose. Outlets ran headlines asking exactly that."
+   },
+   {
+    "pace": "steady",
+    "ref": "But the evidence points the other way. Microsoft, Australia's government and SecurityWeek all say there is no sign of malicious activity. And history backs them up. When Cloudflare went down in November twenty twenty-five, many first suspected an attack. It turned out to be a single oversized configuration file."
+   },
+   {
+    "pace": "steady",
+    "ref": "Suspect number two was Patch Tuesday. Just two days earlier, Microsoft had released its November security updates, fixing more than a thousand vulnerabilities, including an Outlook flaw that was already being exploited. SecurityWeek pointed out the timing, but Microsoft's advisories have not linked those updates to the outage."
+   },
+   {
+    "pace": "steady",
+    "ref": "Suspect number three was a bad change pushed to the network. This is the one Microsoft itself is now chasing, with the rollback of that network configuration change. It fits the pattern of most big outages, but until the post-incident report arrives, it is still a suspect, not a conviction."
+   },
+   {
+    "pace": "slow",
+    "ref": "And suspect number four was the secure-connection system itself, the part of every server that sets up encrypted links. One independent test reported in the coverage found connections to Outlook opening, but the secure handshake never finishing. That matches what Microsoft described. It explains how the servers failed, but not yet why."
+   }
+  ],
+  "file": "t_0f97ae36c6.mp3",
+  "dur": 98.115918,
+  "wpm": 153
+ },
+ {
+  "section": "ACT 5",
+  "text": "[serious] Here is the bigger picture. This is not one bad day. It is part of an outage era.\n\n[curious] Rewind to October twenty twenty-one. Facebook, Instagram and WhatsApp vanished for about six hours. A routine command during maintenance accidentally cut Facebook's data centres off from the rest of the internet, according to the company's own engineering report. Fixing it took extra time, the company said, because engineers had to get physical access to secure data centres to repair the network.\n\n[tense] In July twenty twenty-four, a faulty CrowdStrike update crashed about eight and a half million Windows computers, by Microsoft's own estimate. Airports, hospitals and broadcasters went dark.\n\n[knowing] In October twenty twenty-five, Amazon Web Services went down in its biggest region, in northern Virginia, for about fifteen hours. The cause was a hidden bug in the automation that manages DNS for one of its databases.\n\n[serious] Just nine days later, Microsoft's own Azure Front Door, the gateway in front of many websites, failed worldwide for about eight hours after a configuration change produced data that crashed its servers.\n\n[urgent] In November twenty twenty-five, Cloudflare stumbled when a database permissions change made one of its files double in size, and its software crashed across the network.\n\n[serious] And in twenty twenty-six, Microsoft three sixty-five has already gone down in January, for hours, and in August, when a code update disrupted Outlook for days, according to The Conversation. Now November.\n\n[reflective] Notice what these have in common. Almost none of them were attacks. They were changes, updates, files and automation that worked perfectly for years, until one day they did not.",
+  "ref": "Here is the bigger picture. This is not one bad day. It is part of an outage era. Rewind to October twenty twenty-one. Facebook, Instagram and WhatsApp vanished for about six hours. A routine command during maintenance accidentally cut Facebook's data centres off from the rest of the internet, according to the company's own engineering report. Fixing it took extra time, the company said, because engineers had to get physical access to secure data centres to repair the network. In July twenty twenty-four, a faulty CrowdStrike update crashed about eight and a half million Windows computers, by Microsoft's own estimate. Airports, hospitals and broadcasters went dark. In October twenty twenty-five, Amazon Web Services went down in its biggest region, in northern Virginia, for about fifteen hours. The cause was a hidden bug in the automation that manages DNS for one of its databases. Just nine days later, Microsoft's own Azure Front Door, the gateway in front of many websites, failed worldwide for about eight hours after a configuration change produced data that crashed its servers. In November twenty twenty-five, Cloudflare stumbled when a database permissions change made one of its files double in size, and its software crashed across the network. And in twenty twenty-six, Microsoft three sixty-five has already gone down in January, for hours, and in August, when a code update disrupted Outlook for days, according to The Conversation. Now November. Notice what these have in common. Almost none of them were attacks. They were changes, updates, files and automation that worked perfectly for years, until one day they did not.",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "Here is the bigger picture. This is not one bad day. It is part of an outage era."
+   },
+   {
+    "pace": "steady",
+    "ref": "Rewind to October twenty twenty-one. Facebook, Instagram and WhatsApp vanished for about six hours. A routine command during maintenance accidentally cut Facebook's data centres off from the rest of the internet, according to the company's own engineering report. Fixing it took extra time, the company said, because engineers had to get physical access to secure data centres to repair the network."
+   },
+   {
+    "pace": "fast",
+    "ref": "In July twenty twenty-four, a faulty CrowdStrike update crashed about eight and a half million Windows computers, by Microsoft's own estimate. Airports, hospitals and broadcasters went dark."
+   },
+   {
+    "pace": "steady",
+    "ref": "In October twenty twenty-five, Amazon Web Services went down in its biggest region, in northern Virginia, for about fifteen hours. The cause was a hidden bug in the automation that manages DNS for one of its databases."
+   },
+   {
+    "pace": "steady",
+    "ref": "Just nine days later, Microsoft's own Azure Front Door, the gateway in front of many websites, failed worldwide for about eight hours after a configuration change produced data that crashed its servers."
+   },
+   {
+    "pace": "fast",
+    "ref": "In November twenty twenty-five, Cloudflare stumbled when a database permissions change made one of its files double in size, and its software crashed across the network."
+   },
+   {
+    "pace": "steady",
+    "ref": "And in twenty twenty-six, Microsoft three sixty-five has already gone down in January, for hours, and in August, when a code update disrupted Outlook for days, according to The Conversation. Now November."
+   },
+   {
+    "pace": "slow",
+    "ref": "Notice what these have in common. Almost none of them were attacks. They were changes, updates, files and automation that worked perfectly for years, until one day they did not."
+   }
+  ],
+  "file": "t_e811df6cd8.mp3",
+  "dur": 101.485714,
+  "wpm": 155
+ },
+ {
+  "section": "ACT 6",
+  "text": "[curious] So why do these outages keep getting bigger? There are three reasons.\n\n[serious] The first is concentration. Just three companies, Amazon, Microsoft and Google, rent out most of the world's cloud computing. When one of them has a bad day, a huge share of the internet has one too.\n\n[tense] The second is automation. Modern systems fix themselves faster than any human could. That is wonderful, until the automation makes the wrong call. Then it spreads the mistake faster than any human could, too.\n\n[knowing] The third is that we stopped planning for failure. As analyst Sanchit Vir Gogia of Greyhound Research told CIO, \"Enterprises have priced Microsoft 365 as a licence and never as a single point of failure.\"\n\n[serious] His advice is simple. \"The answer is not a second suite. It is a rehearsed fallback for the few things that cannot stop.\" That means a backup way to call your team, offline copies of critical files, and a plan that people have actually practised.\n\n[knowing] And for everyday users, the advice from admins is just as simple. Mail is delayed, not lost, so do not resend everything. And do not trust that it is fixed until Microsoft's own status page says so.\n\n[curious] And what do customers get back? Microsoft's business plans promise ninety-nine point nine percent monthly uptime, backed by service credits. That sounds close to perfect, but ninety-nine point nine percent still allows about forty-three minutes of downtime a month. This outage blew far past that.\n\n[knowing] Even then, the credits are not automatic. According to admin guides like LazyAdmin, businesses have to file a claim through the Microsoft three sixty-five admin centre, citing the incident numbers. And a credit on next month's bill does not give anyone back a lost day of work.\n\n[reflective] As Mahmoud Elkhodr of CQUniversity put it, \"Outages of this scale are more often self-inflicted in this way than they are the work of attackers.\"",
+  "ref": "So why do these outages keep getting bigger? There are three reasons. The first is concentration. Just three companies, Amazon, Microsoft and Google, rent out most of the world's cloud computing. When one of them has a bad day, a huge share of the internet has one too. The second is automation. Modern systems fix themselves faster than any human could. That is wonderful, until the automation makes the wrong call. Then it spreads the mistake faster than any human could, too. The third is that we stopped planning for failure. As analyst Sanchit Vir Gogia of Greyhound Research told CIO, \"Enterprises have priced Microsoft 365 as a licence and never as a single point of failure.\" His advice is simple. \"The answer is not a second suite. It is a rehearsed fallback for the few things that cannot stop.\" That means a backup way to call your team, offline copies of critical files, and a plan that people have actually practised. And for everyday users, the advice from admins is just as simple. Mail is delayed, not lost, so do not resend everything. And do not trust that it is fixed until Microsoft's own status page says so. And what do customers get back? Microsoft's business plans promise ninety-nine point nine percent monthly uptime, backed by service credits. That sounds close to perfect, but ninety-nine point nine percent still allows about forty-three minutes of downtime a month. This outage blew far past that. Even then, the credits are not automatic. According to admin guides like LazyAdmin, businesses have to file a claim through the Microsoft three sixty-five admin centre, citing the incident numbers. And a credit on next month's bill does not give anyone back a lost day of work. As Mahmoud Elkhodr of CQUniversity put it, \"Outages of this scale are more often self-inflicted in this way than they are the work of attackers.\"",
+  "paras": [
+   {
+    "pace": "steady",
+    "ref": "So why do these outages keep getting bigger? There are three reasons."
+   },
+   {
+    "pace": "steady",
+    "ref": "The first is concentration. Just three companies, Amazon, Microsoft and Google, rent out most of the world's cloud computing. When one of them has a bad day, a huge share of the internet has one too."
+   },
+   {
+    "pace": "fast",
+    "ref": "The second is automation. Modern systems fix themselves faster than any human could. That is wonderful, until the automation makes the wrong call. Then it spreads the mistake faster than any human could, too."
+   },
+   {
+    "pace": "steady",
+    "ref": "The third is that we stopped planning for failure. As analyst Sanchit Vir Gogia of Greyhound Research told CIO, \"Enterprises have priced Microsoft 365 as a licence and never as a single point of failure.\""
+   },
+   {
+    "pace": "steady",
+    "ref": "His advice is simple. \"The answer is not a second suite. It is a rehearsed fallback for the few things that cannot stop.\" That means a backup way to call your team, offline copies of critical files, and a plan that people have actually practised."
+   },
+   {
+    "pace": "steady",
+    "ref": "And for everyday users, the advice from admins is just as simple. Mail is delayed, not lost, so do not resend everything. And do not trust that it is fixed until Microsoft's own status page says so."
+   },
+   {
+    "pace": "steady",
+    "ref": "And what do customers get back? Microsoft's business plans promise ninety-nine point nine percent monthly uptime, backed by service credits. That sounds close to perfect, but ninety-nine point nine percent still allows about forty-three minutes of downtime a month. This outage blew far past that."
+   },
+   {
+    "pace": "steady",
+    "ref": "Even then, the credits are not automatic. According to admin guides like LazyAdmin, businesses have to file a claim through the Microsoft three sixty-five admin centre, citing the incident numbers. And a credit on next month's bill does not give anyone back a lost day of work."
+   },
+   {
+    "pace": "slow",
+    "ref": "As Mahmoud Elkhodr of CQUniversity put it, \"Outages of this scale are more often self-inflicted in this way than they are the work of attackers.\""
+   }
+  ],
+  "file": "t_8fd35436b4.mp3",
+  "dur": 120.685714,
+  "wpm": 157
+ },
+ {
+  "section": "OUTRO",
+  "text": "[reflective] So the answer to our question is concentration, plus automation. The more of the world runs on a few companies' servers, and the more those servers run themselves, the further one small fault can travel.\n\n[serious] Microsoft has promised a full post-incident report. When it arrives, we will know whether the suspect was the network change, the health checks, or something nobody has guessed yet.\n\n{warm} If you want to see how another giant of tech was built, and how it almost fell, watch this one next. This has been Titans Told. See you in the next story.",
+  "ref": "So the answer to our question is concentration, plus automation. The more of the world runs on a few companies' servers, and the more those servers run themselves, the further one small fault can travel. Microsoft has promised a full post-incident report. When it arrives, we will know whether the suspect was the network change, the health checks, or something nobody has guessed yet. {warm} If you want to see how another giant of tech was built, and how it almost fell, watch this one next. This has been Titans Told. See you in the next story.",
+  "paras": [
+   {
+    "pace": "slow",
+    "ref": "So the answer to our question is concentration, plus automation. The more of the world runs on a few companies' servers, and the more those servers run themselves, the further one small fault can travel."
+   },
+   {
+    "pace": "steady",
+    "ref": "Microsoft has promised a full post-incident report. When it arrives, we will know whether the suspect was the network change, the health checks, or something nobody has guessed yet."
+   },
+   {
+    "pace": "steady",
+    "ref": "{warm} If you want to see how another giant of tech was built, and how it almost fell, watch this one next. This has been Titans Told. See you in the next story."
+   }
+  ],
+  "file": "t_19543926d8.mp3",
+  "dur": 32.365714,
+  "wpm": 180
+ }
+]
