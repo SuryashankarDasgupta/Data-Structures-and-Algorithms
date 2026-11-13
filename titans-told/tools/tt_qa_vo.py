@@ -8,12 +8,16 @@ def load(p):
 from faster_whisper import WhisperModel
 vo = sys.argv[1]
 man = json.load(open(f"{vo}/manifest.json"))
-m = WhisperModel("base.en", device="cpu", compute_type="int8")
+import os
+# TT_WHISPER=small re-checks with a stronger model (base.en sometimes drops words; check a suspicious section with small before re-voicing)
+m = WhisperModel(os.environ.get("TT_WHISPER", "base.en"), device="cpu", compute_type="int8")
+ONLY = [x.strip() for x in os.environ.get("TT_QA_ONLY", "").split(",") if x.strip()]
 TAG = re.compile(r"\[[^\[\]]{1,40}\]")
 norm = lambda t: re.findall(r"[a-z0-9]+", TAG.sub(" ", t).lower().replace("’", "'").replace("'", ""))
 for c in man:
     if "text" not in c: continue
-    segs, _ = m.transcribe(load(f"{vo}/{c['file']}"), word_timestamps=True)
+    if ONLY and c.get("section") not in ONLY: continue
+    segs, _ = m.transcribe(load(f"{vo}/{c['file']}"), word_timestamps=True, **({"language": "en", "condition_on_previous_text": False} if "en" not in m.__dict__.get("model_size_or_path", "") and os.environ.get("TT_WHISPER") else {}))
     words = [{"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for s in segs for w in s.words]
     c["words"] = words
     ref = c.get("ref", c["text"])
