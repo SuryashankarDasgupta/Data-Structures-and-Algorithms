@@ -274,6 +274,47 @@ def reschedule(vid, when):
     print("rescheduled:", vid, items[0]["snippet"]["title"], st.get("publishAt"), "->", r["status"].get("publishAt"))
 
 
+def analytics(vid):
+    """Weekly-report retention numbers (owner, 14 Nov 2026): viewers still watching at 0:30 and 1:00, average view
+    duration (lifetime and the first 2 days), and Brian G. Johnson's length rule (2 x early AVD) for comparison.
+    Needs the YouTube Analytics API enabled in the Google Cloud project of TT_YT_CLIENT_ID (the youtube scope is enough)."""
+    import datetime, re as _re, urllib.parse
+    tok = token()
+    c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,statistics&id={vid}", tok)
+    items = d.get("items", []) if isinstance(d, dict) else []
+    if not items: sys.exit(f"video {vid} not found")
+    it = items[0]
+    m = _re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", it["contentDetails"]["duration"])
+    dur = sum(int(x or 0) * k for x, k in zip(m.groups(), (3600, 60, 1)))
+    pub = it["snippet"]["publishedAt"][:10]
+    today = datetime.date.today().isoformat()
+    d2 = (datetime.date.fromisoformat(pub) + datetime.timedelta(days=1)).isoformat()
+    def q(params):
+        u = "https://youtubeanalytics.googleapis.com/v2/reports?" + urllib.parse.urlencode(dict(params, ids="channel==MINE", filters="video==" + vid))
+        c, r, _ = api("GET", u, tok)
+        if c == 403 and "has not been used" in str(r):
+            print("ANALYTICS_API_DISABLED: enable the YouTube Analytics API in the Google Cloud project of the Titans Told OAuth client"); sys.exit(3)
+        if c != 200: sys.exit(f"analytics failed: {c} {str(r)[:300]}")
+        return r.get("rows") or []
+    life = q({"startDate": pub, "endDate": today, "metrics": "views,averageViewDuration,averageViewPercentage"})
+    early = q({"startDate": pub, "endDate": d2, "metrics": "views,averageViewDuration"})
+    ret = q({"startDate": pub, "endDate": today, "metrics": "audienceWatchRatio", "dimensions": "elapsedVideoTimeRatio"})
+    def at(sec):
+        if not ret or dur <= 0: return None
+        x = sec / dur
+        return min(ret, key=lambda r: abs(r[0] - x))[1]
+    mmss = lambda s: f"{int(s) // 60}:{int(s) % 60:02d}" if s is not None else "n/a"
+    pct = lambda v: f"{v * 100:.0f}%" if v is not None else "n/a"
+    v, avd, avp = (life[0] + [None, None, None])[:3] if life else (0, None, None)
+    ev, eavd = (early[0] + [None, None])[:2] if early else (0, None)
+    print(f"{vid} | {it['snippet']['title']}")
+    print(f"length {mmss(dur)} | views {v} | AVD {mmss(avd)} ({avp:.0f}% viewed)" if avd is not None else f"length {mmss(dur)} | views {v} | AVD n/a")
+    print(f"still watching at 0:30 {pct(at(30))} | at 1:00 {pct(at(60))}  (YouTube's ratio; can exceed 100% with rewatches)")
+    print(f"first 2 days (publish day + next, Pacific dates): views {ev} | AVD {mmss(eavd)}")
+    if eavd:
+        print(f"length rule 2 x early AVD = {mmss(2 * eavd)} vs actual {mmss(dur)} -> {'longer than the rule suggests' if dur > 2 * eavd * 1.15 else 'shorter than the rule suggests' if dur < 2 * eavd * 0.85 else 'in line'}")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "update": update(sys.argv[2], sys.argv[3])
@@ -283,3 +324,4 @@ if __name__ == "__main__":
     if cmd == "scheduled": scheduled()
     if cmd == "comment": comment(sys.argv[2], sys.argv[3])
     if cmd == "reschedule": reschedule(sys.argv[2], sys.argv[3])
+    if cmd == "analytics": analytics(sys.argv[2])
