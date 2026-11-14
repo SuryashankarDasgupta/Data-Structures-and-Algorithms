@@ -309,7 +309,10 @@ def analytics(vid):
     ev, eavd = (early[0] + [None, None])[:2] if early else (0, None)
     print(f"{vid} | {it['snippet']['title']}")
     print(f"length {mmss(dur)} | views {v} | AVD {mmss(avd)} ({avp:.0f}% viewed)" if avd is not None else f"length {mmss(dur)} | views {v} | AVD n/a")
-    print(f"still watching at 0:30 {pct(at(30))} | at 1:00 {pct(at(60))}  (YouTube's ratio; can exceed 100% with rewatches)")
+    if ret:
+        print(f"still watching at 0:30 {pct(at(30))} | at 1:00 {pct(at(60))}  (YouTube's ratio; can exceed 100% with rewatches)")
+    else:
+        print("still watching at 0:30 / 1:00: not available yet (YouTube hides the retention curve until a video has enough views; Studio may show it)")
     print(f"first 2 days (publish day + next, Pacific dates): views {ev} | AVD {mmss(eavd)}")
     if eavd:
         print(f"length rule 2 x early AVD = {mmss(2 * eavd)} vs actual {mmss(dur)} -> {'longer than the rule suggests' if dur > 2 * eavd * 1.15 else 'shorter than the rule suggests' if dur < 2 * eavd * 0.85 else 'in line'}")
