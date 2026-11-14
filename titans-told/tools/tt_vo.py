@@ -13,10 +13,11 @@ PACE = re.compile(r"^\s*\{(fast|steady|slow)\}\s*")
 script, outdir = sys.argv[1], sys.argv[2]
 os.makedirs(outdir, exist_ok=True)
 # Voice account (owner decision 12 Nov 2026): TT_EL_KEY names the env var holding the key
-# (ELEVENLABS_API_KEY_2 = Creator account, ELEVENLABS_API_KEY = shared Pro). One video = one account:
+# (ELEVENLABS_API_KEY_2 = second account, ELEVENLABS_API_KEY_3 = third account (owner, 14 Nov 2026),
+# ELEVENLABS_API_KEY = main Pro). One video = one account:
 # the first run records the account in vo/account.txt and later runs refuse a different one.
 KEYVAR = os.environ.get("TT_EL_KEY", "ELEVENLABS_API_KEY")
-if KEYVAR not in ("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY_2") or not os.environ.get(KEYVAR):
+if KEYVAR not in ("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY_2", "ELEVENLABS_API_KEY_3") or not os.environ.get(KEYVAR):
     raise SystemExit(f"voice key {KEYVAR} not available")
 acc = os.path.join(outdir, "account.txt")
 if os.path.exists(acc) and open(acc).read().strip() != KEYVAR:
