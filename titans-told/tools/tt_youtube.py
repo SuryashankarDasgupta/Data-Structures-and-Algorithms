@@ -251,6 +251,29 @@ def comment(vid, text):
     print("commented:", r["id"], f"https://www.youtube.com/watch?v={vid}&lc={r['snippet']['topLevelComment']['id']} (pin it in Studio)")
 
 
+def reschedule(vid, when):
+    """Move a NOT-yet-public scheduled upload to a new publishAt (ISO UTC, e.g. 2026-11-17T13:00:00Z).
+    Refuses public videos and times in the past. Keeps every other status field."""
+    import datetime
+    tok = token()
+    c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/videos?part=status,snippet&id={vid}", tok)
+    items = d.get("items", []) if isinstance(d, dict) else []
+    if not items: sys.exit(f"video {vid} not found")
+    st = items[0]["status"]
+    if st.get("privacyStatus") != "private" or not st.get("publishAt"):
+        sys.exit(f"refused: {vid} is not a scheduled (private + publishAt) upload: {st.get('privacyStatus')}")
+    t = datetime.datetime.strptime(when, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+    if t <= datetime.datetime.now(datetime.timezone.utc):
+        sys.exit("refused: the new time is in the past")
+    body = {"id": vid, "status": {"privacyStatus": "private", "publishAt": when,
+            "selfDeclaredMadeForKids": st.get("selfDeclaredMadeForKids", False),
+            "embeddable": st.get("embeddable", True), "license": st.get("license", "youtube"),
+            "publicStatsViewable": st.get("publicStatsViewable", True)}}
+    c, r, _ = api("PUT", "https://youtube.googleapis.com/youtube/v3/videos?part=status", tok, body)
+    if c != 200: sys.exit(f"reschedule failed: {c} {str(r)[:300]}")
+    print("rescheduled:", vid, items[0]["snippet"]["title"], st.get("publishAt"), "->", r["status"].get("publishAt"))
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "update": update(sys.argv[2], sys.argv[3])
@@ -259,3 +282,4 @@ if __name__ == "__main__":
     if cmd == "status": status(sys.argv[2])
     if cmd == "scheduled": scheduled()
     if cmd == "comment": comment(sys.argv[2], sys.argv[3])
+    if cmd == "reschedule": reschedule(sys.argv[2], sys.argv[3])
