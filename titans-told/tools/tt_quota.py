@@ -3,9 +3,13 @@ usage: tt_quota.py --job CHARS [--bmp-regular N --bmp-roundups N] [--tt-pro-used
 Reads all three ElevenLabs accounts and prints their quotas, then the ONE account to use for one whole video:
   1. Second account (ELEVENLABS_API_KEY_2): Titans Told may use all of it -> if left >= job.
   2. Third account (ELEVENLABS_API_KEY_3): all but the last 25,000 characters (BMP's spare) -> if left - job >= 25,000.
-  3. Main Pro (ELEVENLABS_API_KEY): at most 115,000 Titans Told characters per Pro cycle (pass --tt-pro-used from the
-     voice log), and never below BMP's reserve: reserve = 13,000 x BMP regular videos left + 22,000 x BMP round-ups
-     left + 1,050 x days to the Pro reset (Off-Road Handbook), counts from the Drive doc "TT – BMP voice reserve".
+  3. Main Pro (ELEVENLABS_API_KEY): at most 115,000 Titans Told characters per Pro cycle (pass --tt-pro-used = Titans
+     Told's Pro characters in the voice log since the last Pro reset), and never below BMP's reserve.
+     From the 5 Dec 2026 Pro reset on (owner, 14 Nov 2026: BMP 355,000 + Off-Road ~30,000 + Titans Told 115,000 a
+     month on Pro): reserve = 385,000 - (Pro used this cycle - Titans Told's Pro use this cycle), i.e. whatever BMP and
+     Off-Road have not yet used of their monthly share stays untouched. No BMP data needed. If the "TT – BMP voice
+     reserve" doc gives counts (--bmp-regular/--bmp-roundups), the stricter of the two reserves applies.
+     Before that reset (current cycle, Titans Told's earlier Pro use was not logged) Pro is used only with doc counts.
   4. Else NONE (pause the video and email the owner).
 Exit code 0 = an account was chosen (printed as USE=<env var>), 3 = none. --job 0 just prints the quotas."""
 import argparse, json, os, sys, time, urllib.request
@@ -16,6 +20,8 @@ ap.add_argument("--bmp-roundups", type=int, default=None)
 ap.add_argument("--tt-pro-used", type=int, default=0, help="Titans Told characters already used on Pro this Pro cycle")
 ap.add_argument("--tt-pro-cap", type=int, default=115000)
 ap.add_argument("--third-spare", type=int, default=25000)
+ap.add_argument("--others-share", type=int, default=385000, help="BMP 355,000 + Off-Road ~30,000 per Pro cycle")
+SHARE_MODE_FROM = 1796572800  # 2026-12-06 16:00 UTC: a next-reset later than this means the 5 Dec reset has happened
 a = ap.parse_args()
 acc = {}
 for var, label in (("ELEVENLABS_API_KEY_2", "second"), ("ELEVENLABS_API_KEY_3", "third"), ("ELEVENLABS_API_KEY", "pro")):
@@ -29,7 +35,7 @@ for var, label in (("ELEVENLABS_API_KEY_2", "second"), ("ELEVENLABS_API_KEY_3", 
         print(f"{label}: quota check failed ({type(e).__name__})"); continue
     left = d["character_limit"] - d["character_count"]
     days = max(0.0, (d["next_character_count_reset_unix"] - time.time()) / 86400)
-    acc[label] = dict(var=var, left=left, days=round(days, 1))
+    acc[label] = dict(var=var, left=left, used=d["character_count"], days=round(days, 1), next=d["next_character_count_reset_unix"])
     reset = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(d["next_character_count_reset_unix"]))
     print(f"{label} ({d.get('tier')}): used {d['character_count']:,}, left {left:,} of {d['character_limit']:,}, resets {reset} ({days:.1f} days)")
 tt_room = sum([acc["second"]["left"] if "second" in acc else 0, max(0, acc["third"]["left"] - a.third_spare) if "third" in acc else 0,
@@ -47,11 +53,18 @@ if t:
         print(f"USE={t['var']} (third account)"); sys.exit(0)
 p = acc.get("pro")
 if p:
-    if a.bmp_regular is None or a.bmp_roundups is None:
-        print("pro: BMP counts not given, so Pro is not used"); print("USE=NONE"); sys.exit(3)
-    reserve = 13000 * a.bmp_regular + 22000 * a.bmp_roundups + int(1050 * p["days"])
+    reserves = []
+    if p["next"] > SHARE_MODE_FROM:
+        others_used = max(0, p["used"] - a.tt_pro_used)
+        reserves.append(("share", max(0, a.others_share - others_used)))
+        print(f"pro: BMP + Off-Road used about {others_used:,} of their {a.others_share:,} this cycle")
+    if a.bmp_regular is not None and a.bmp_roundups is not None:
+        reserves.append(("doc", 13000 * a.bmp_regular + 22000 * a.bmp_roundups + int(1050 * p["days"])))
+    if not reserves:
+        print("pro: not used (before the 5 Dec reset Pro needs the BMP reserve doc counts)"); print("USE=NONE"); sys.exit(3)
+    kind, reserve = max(reserves, key=lambda x: x[1])
     room_cap = a.tt_pro_cap - a.tt_pro_used
-    print(f"pro: BMP reserve {reserve:,}; after this job Pro would have {p['left'] - a.job:,}; TT Pro share room {room_cap:,} of {a.tt_pro_cap:,}")
+    print(f"pro: BMP reserve {reserve:,} ({kind}); after this job Pro would have {p['left'] - a.job:,}; TT Pro share room {room_cap:,} of {a.tt_pro_cap:,}")
     if p["left"] - a.job >= reserve and a.job <= room_cap:
         print(f"USE={p['var']} (main Pro, within Titans Told's share)"); sys.exit(0)
 print("USE=NONE"); sys.exit(3)
