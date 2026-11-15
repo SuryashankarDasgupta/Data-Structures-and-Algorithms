@@ -4,7 +4,9 @@ environment's network secret for generativelanguage.googleapis.com (header x-goo
 
 BACKENDS (owner, 15 Nov 2026): Vertex AI FIRST (project "Titans Told Images", paid from the Google Cloud trial credits
 of INR 28,569 valid to 14 Feb 2027; network secret for aiplatform.googleapis.com, header x-goog-api-key), real-time 1K.
-AI Studio (generativelanguage.googleapis.com, prepaid credits) only as the fallback, where 1K + Batch applies.
+Fallback (owner, 15 Nov 2026: "Keep the Canva as fallback from Nov 28. AI studio has no balance"): when Vertex fails the
+tool exits 10 (VERTEX_UNAVAILABLE) and production draws the rest with Canva. AI Studio is used only with --studio
+(manual, if the owner tops it up); its batch commands stay available for that case.
 Owner decision 15 Nov 2026 (cost): "Go ahead with 1k plus batches" -> scenes at 1K through the Batch API (about half price,
 results within hours); real-time 1K only for BREAKING videos or when a batch is late; thumbnails at 2K (one still).
 
@@ -174,10 +176,11 @@ def call(prompt):
         try:
             return call_vertex(prompt)
         except RuntimeError as e:
-            if "HTTP 4" in str(e) and "HTTP 429" not in str(e):   # auth/billing/model problem: switch backend for this run
-                VERTEX_FAILED.append(str(e)); print("Vertex unavailable, falling back to AI Studio:", str(e)[:200])
-            else:
-                raise
+            if "HTTP 4" in str(e) and "HTTP 429" not in str(e):   # auth/billing/model problem: stop, Canva takes over
+                VERTEX_FAILED.append(str(e)); print("VERTEX_UNAVAILABLE:", str(e)[:200])
+            raise
+    if VERTEX_FAILED:
+        raise RuntimeError("vertex unavailable")
     return call_studio(prompt)
 
 
@@ -229,6 +232,8 @@ def main():
             save_1080(call(arg("--thumb")), out)
         except Depleted:
             print("GEMINI_CREDITS_DEPLETED"); sys.exit(7)
+        except RuntimeError as e:
+            print("VERTEX_UNAVAILABLE:" if VERTEX_FAILED else "FAILED:", str(e)[:200]); sys.exit(10 if VERTEX_FAILED else 8)
         log["images"] += 1; log["est_inr"] += EST_INR.get(SIZE, 10.0)
         json.dump(log, open("gemini_log.json", "w"), indent=1); print("thumbnail ->", out); return
     plan, outdir = sys.argv[1], arg("--out", "img")
@@ -267,6 +272,8 @@ def main():
     log["est_inr"] = round(log["est_inr"] + done * EST_INR.get(SIZE, 10.0), 1)
     json.dump(log, open("gemini_log.json", "w"), indent=1)
     print(f"gemini: {done} new images -> {outdir}/ | total this video {log['images']} | est. INR {log['est_inr']}")
+    if VERTEX_FAILED:
+        print("VERTEX_UNAVAILABLE: draw the rest with Canva (section 4):", ",".join(sorted(failed))); sys.exit(10)
     if depleted:
         print("GEMINI_CREDITS_DEPLETED: top up in AI Studio; draw the rest with Canva:", ",".join(sorted(failed))); sys.exit(7)
     if failed:
