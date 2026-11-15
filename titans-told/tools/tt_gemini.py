@@ -2,6 +2,9 @@
 Replaces Canva as the FIRST source of new illustrations (Canva stays the fallback). The API key is injected by the
 environment's network secret for generativelanguage.googleapis.com (header x-goog-api-key); never print or store it.
 
+BACKENDS (owner, 15 Nov 2026): Vertex AI FIRST (project "Titans Told Images", paid from the Google Cloud trial credits
+of INR 28,569 valid to 14 Feb 2027; network secret for aiplatform.googleapis.com, header x-goog-api-key), real-time 1K.
+AI Studio (generativelanguage.googleapis.com, prepaid credits) only as the fallback, where 1K + Batch applies.
 Owner decision 15 Nov 2026 (cost): "Go ahead with 1k plus batches" -> scenes at 1K through the Batch API (about half price,
 results within hours); real-time 1K only for BREAKING videos or when a batch is late; thumbnails at 2K (one still).
 
@@ -139,7 +142,46 @@ def batch_fetch():
     sys.exit(9 if pending else (8 if failed else 0))
 
 
+VERTEX_FAILED = []
+
+
+def call_vertex(prompt):
+    body = req_body(prompt); body["contents"][0]["role"] = "user"
+    req = urllib.request.Request(f"https://aiplatform.googleapis.com/v1/publishers/google/models/{MODEL}:generateContent",
+                                 data=json.dumps(body).encode(),
+                                 headers={"x-goog-api-key": "injected-by-proxy", "Content-Type": "application/json"})
+    last = ""
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=240) as r:
+                d = json.load(r)
+            for p in d.get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                if "inlineData" in p:
+                    return base64.b64decode(p["inlineData"]["data"])
+            last = "no image (" + str(d.get("candidates", [{}])[0].get("finishReason", "?")) + ")"
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}: {e.read().decode(errors='ignore')[:160]}"
+            if e.code not in (429, 500, 502, 503, 504):
+                break
+        except Exception as e:
+            last = f"{type(e).__name__}: {e}"
+        time.sleep(8 * (attempt + 1))
+    raise RuntimeError("vertex: " + last)
+
+
 def call(prompt):
+    if "--studio" not in sys.argv and not VERTEX_FAILED:
+        try:
+            return call_vertex(prompt)
+        except RuntimeError as e:
+            if "HTTP 4" in str(e) and "HTTP 429" not in str(e):   # auth/billing/model problem: switch backend for this run
+                VERTEX_FAILED.append(str(e)); print("Vertex unavailable, falling back to AI Studio:", str(e)[:200])
+            else:
+                raise
+    return call_studio(prompt)
+
+
+def call_studio(prompt):
     body = req_body(prompt)
     req = urllib.request.Request(f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent",
                                  data=json.dumps(body).encode(),
@@ -221,7 +263,8 @@ def main():
                 depleted = True; failed.append(sid)
             except Exception as e:
                 failed.append(sid); print(f"{sid}: failed: {e}")
-    log["images"] += done; log["est_inr"] = round(log["est_inr"] + done * EST_INR.get(SIZE, 10.0), 1)
+    log["images"] += done; log["backend"] = "studio" if (VERTEX_FAILED or "--studio" in sys.argv) else "vertex (Cloud credits)"
+    log["est_inr"] = round(log["est_inr"] + done * EST_INR.get(SIZE, 10.0), 1)
     json.dump(log, open("gemini_log.json", "w"), indent=1)
     print(f"gemini: {done} new images -> {outdir}/ | total this video {log['images']} | est. INR {log['est_inr']}")
     if depleted:
