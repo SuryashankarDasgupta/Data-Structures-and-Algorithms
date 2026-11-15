@@ -314,6 +314,11 @@ def analytics(vid):
     else:
         print("still watching at 0:30 / 1:00: not available yet (YouTube hides the retention curve until a video has enough views; Studio may show it)")
     print(f"first 2 days (publish day + next, Pacific dates): views {ev} | AVD {mmss(eavd)}")
+    src = q({"startDate": pub, "endDate": today, "metrics": "views", "dimensions": "insightTrafficSourceType", "sort": "-views"})
+    names = {"YT_SEARCH": "search", "SHORTS": "Shorts feed", "RELATED_VIDEO": "suggested", "SUBSCRIBER": "home/browse (subscribers)",
+             "YT_OTHER_PAGE": "other YouTube", "YT_CHANNEL": "channel page", "EXT_URL": "outside links", "NO_LINK_OTHER": "direct/unknown",
+             "PLAYLIST": "playlists", "NOTIFICATION": "notifications", "END_SCREEN": "end screens", "ANNOTATION": "cards"}
+    print("traffic sources: " + (", ".join(f"{names.get(k, k.lower())} {n}" for k, n in src) if src else "none yet"))
     if eavd:
         print(f"length rule 2 x early AVD = {mmss(2 * eavd)} vs actual {mmss(dur)} -> {'longer than the rule suggests' if dur > 2 * eavd * 1.15 else 'shorter than the rule suggests' if dur < 2 * eavd * 0.85 else 'in line'}")
 
