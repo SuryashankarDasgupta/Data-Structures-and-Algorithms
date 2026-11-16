@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Titans Told compositor: scene spec JSON -> 1920x1080/30fps MP4.
 
-Usage: python3 tt_compose.py spec.json out.mp4 [--preview SECONDS] [--draft]
+Usage: python3 tt_compose.py spec.json out.mp4 [--preview SECONDS] [--draft] [--hq]
+  --hq: illustrations rendered natively at 1440p from the 4K masters, encoded as a 3840x2160 (4K) upload.
 
 Spec:
 {
@@ -45,6 +46,10 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H, FPS = 1920, 1080, 30
 OUT_W, OUT_H = 2560, 1440   # encoded size: 1440p uploads get YouTube's VP9 encode (sharper on every device)
+# --hq (owner decision 16 Nov 2026, option B): illustrations are rendered natively at 2560x1440 from the 4K masters,
+# text/graphics layers are drawn at 1080p and scaled up, and the file is encoded at 3840x2160 (4K upload).
+HQ = False
+RW, RH = W, H
 XF = 0.35
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONTS = os.path.join(HERE, "..", "fonts")
@@ -81,18 +86,19 @@ _cache = {}
 _order = []
 
 
-def load_img(src):
-    """Load an illustration (ideally a 3840x2160 AI-upscaled master) at 2400x1350 so a 1.25x Ken Burns crop
-    still has full 1080p detail. Small LRU cache keeps memory low across parallel workers."""
-    if src in _cache:
-        return _cache[src]
+def load_img(src, hq=False):
+    """Load an illustration (ideally a 3840x2160 AI-upscaled master) at 1.25x the render width (2400 px, or 3200 px
+    with --hq) so a Ken Burns crop still has full detail. Small LRU cache keeps memory low across parallel workers."""
+    key = (src, hq)
+    if key in _cache:
+        return _cache[key]
     im = Image.open(src).convert("RGB")
-    tw = int(W * 1.25)
+    tw = int((RW if hq else W) * 1.25)
     th = int(tw * im.height / im.width)
     if im.width != tw:
         im = im.resize((tw, th), Image.LANCZOS)
-    _cache[src] = im
-    _order.append(src)
+    _cache[key] = im
+    _order.append(key)
     if len(_order) > 6:
         _cache.pop(_order.pop(0), None)
     return im
@@ -596,7 +602,7 @@ def draw_headline(scene, t, dur):
 DEPTH = True
 
 
-def living_image(im, t, dur, scene):
+def living_image(im, t, dur, scene, ow=W, oh=H):
     """Ken Burns + 2.5D dolly + camera drift (see module doc)."""
     iw, ih = im.size
     p = t / max(dur, 0.01)
@@ -636,14 +642,14 @@ def living_image(im, t, dur, scene):
     cy = min(max(cy, ch / 2), ih - ch / 2)
     x0, y0, x1, y1 = cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2
     if not (DEPTH and scene.get("depth", True)):
-        return im.transform((W, H), Image.EXTENT, (x0, y0, x1, y1), Image.BICUBIC)
+        return im.transform((ow, oh), Image.EXTENT, (x0, y0, x1, y1), Image.BICUBIC)
     # 2.5D dolly: the bottom (near) edge of the source window shrinks faster than the top (far) edge as the
     # camera moves in, so near things grow faster than far things; the window always stays inside the image.
     k = 0.045 * (q if motion != "punch" else q * 1.3)
     inset = cw * k / 2
     src = [(x0, y0), (x1, y0), (x1 - inset, y1 - ch * k * 0.5), (x0 + inset, y1 - ch * k * 0.5)]
-    co = _persp_coeffs(src, [(0, 0), (W, 0), (W, H), (0, H)])
-    return im.transform((W, H), Image.PERSPECTIVE, co, Image.BICUBIC)
+    co = _persp_coeffs(src, [(0, 0), (ow, 0), (ow, oh), (0, oh)])
+    return im.transform((ow, oh), Image.PERSPECTIVE, co, Image.BICUBIC)
 
 
 _PART = {}
@@ -739,20 +745,28 @@ def clip_frame(scene, t):
     return im
 
 
+def up(im):
+    """--hq: scale a 1080p layer to the render size (no-op otherwise)."""
+    return im if im.size == (RW, RH) else im.resize((RW, RH), Image.LANCZOS)
+
+
 def scene_frame(scene, t):
     dur = scene["end"] - scene["start"]
     typ = scene.get("type", "image")
     if typ == "image":
-        im = living_image(load_img(scene["src"]), t, dur, scene)
+        im = (living_image(load_img(scene["src"], True), t, dur, scene, RW, RH) if HQ
+              else living_image(load_img(scene["src"]), t, dur, scene))
         fxk = scene.get("fx", "dust") if DEPTH else "none"
         pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100))
         if pl is not None:
+            pl = up(pl)
             im = im.convert("RGBA"); im.alpha_composite(pl); im = im.convert("RGB")
     elif typ == "clip":   # owner plan 12 Nov 2026: AI hero clip (or other pre-rendered footage) in the hook
         im = clip_frame(scene, t)
         fxk = scene.get("fx", "none")
         pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100)) if (fxk != "none" and DEPTH) else None
         if pl is not None:
+            im = up(im); pl = up(pl)
             im = im.convert("RGBA"); im.alpha_composite(pl); im = im.convert("RGB")
     elif typ == "card":
         im = draw_card(scene, t, dur)
@@ -782,9 +796,10 @@ def scene_frame(scene, t):
         im = draw_frame3d(scene, t, dur)
     else:
         raise ValueError("unknown scene type " + typ)
+    im = up(im)
     if any(scene.get(k) for k in ("caption", "kinetic", "kicker")):
         im = im.convert("RGBA")
-        im.alpha_composite(overlay_layer(scene, t, dur))
+        im.alpha_composite(up(overlay_layer(scene, t, dur)))
         im = im.convert("RGB")
     return im
 
@@ -821,7 +836,7 @@ def tracker_layer(t):
 
 def grain():
     rng = np.random.default_rng(7)
-    g = rng.normal(0, 3, (H, W, 1)).astype(np.float32)
+    g = rng.normal(0, 3, (RH, RW, 1)).astype(np.float32)
     return g
 
 
@@ -834,7 +849,7 @@ def probe_dur(path):
 def render_range(scenes, f0, f1, path):
     G = grain()
     enc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-                            "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "medium",
+                            "-s", f"{RW}x{RH}", "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "medium",
                             "-vf", f"scale={OUT_W}:{OUT_H}:flags=lanczos", "-crf", "18", "-pix_fmt", "yuv420p", path], stdin=subprocess.PIPE)
     si = 0
     for fi in range(f0, f1):
@@ -851,7 +866,7 @@ def render_range(scenes, f0, f1, path):
         tl = tracker_layer(t)
         if tl is not None:
             im_ = Image.fromarray(np.clip(fr, 0, 255).astype(np.uint8)).convert("RGBA")
-            im_.alpha_composite(tl)
+            im_.alpha_composite(up(tl))
             fr = np.asarray(im_.convert("RGB"), np.float32)
         fr = np.clip(fr + G, 0, 255).astype(np.uint8)
         enc.stdin.write(fr.tobytes())
@@ -865,6 +880,9 @@ def render_range(scenes, f0, f1, path):
 def main():
     spec_path, out = sys.argv[1], sys.argv[2]
     preview = float(sys.argv[sys.argv.index("--preview") + 1]) if "--preview" in sys.argv else None
+    global HQ, RW, RH, OUT_W, OUT_H
+    if "--hq" in sys.argv:
+        HQ, RW, RH, OUT_W, OUT_H = True, 2560, 1440, 3840, 2160
     spec = json.load(open(spec_path))
     root = os.path.dirname(os.path.abspath(spec_path))
     for s in spec["scenes"]:
@@ -889,7 +907,7 @@ def main():
     if workers == 1:
         render_range(scenes, 0, nfr, silent)
     else:
-        base = [sys.executable, os.path.abspath(__file__), spec_path, out] + (["--preview", str(preview)] if preview else [])
+        base = [sys.executable, os.path.abspath(__file__), spec_path, out] + (["--preview", str(preview)] if preview else []) + (["--hq"] if HQ else [])
         procs = [subprocess.Popen(base + ["--part", str(i), str(workers)]) for i in range(workers)]
         if any(p.wait() for p in procs):
             sys.exit("a render worker failed")
