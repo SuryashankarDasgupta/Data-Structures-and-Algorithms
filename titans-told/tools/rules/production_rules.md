@@ -97,3 +97,9 @@ Applies to EVERY long-video title before it goes on YouTube: Title A at upload (
 Then make the description's first sentence match the new title (keep the search phrase in it), as in 9e.
 **Record:** in the video record, the Scheduled email and any repackage log, add the line `Title check: true ✓ · search ✓ "<phrase>" · feed ✓ <hook type> · score N (rejected: "<variant>" N – <reason>)`.
 
+
+## 9i. 4K uploads, option B (owner decision 16 Nov 2026: "Go ahead with B and the test render")
+The full render of every scheduled long video uses `--hq`: `python3 ../tools/tt_compose.py spec.json final.mp4 --hq` (illustrations rendered natively at 2560×1440 from the 4K masters, text and graphics drawn at 1080p and scaled up, encoded at 3840×2160 so YouTube offers 4K and serves a higher bitrate). This replaces the plain full-render command in step 9. Previews (`--preview 30`) stay without `--hq`.
+- **Time and size (measured 16 Nov 2026 on a 90 s test):** about 2.5× the standard render, so roughly 2–2.5 h for a 13–14 min video on 4 CPUs, and about 3–3.5 GB per file (standard: ~50 min and ~1.6 GB). Run it in the background and wait as usual. Upload as usual (resumable upload).
+- **Fall back to the standard render (no `--hq`) when:** it is a BREAKING video (section 0b, speed first); OR the video's slot is less than 5 hours away when the full render starts; OR the work folder's free disk (`df -BG .`) is under 10 GB; OR the `--hq` render fails once. Say which render was used, and why, in the video record and the Scheduled email (`Render: 4K (--hq)` or `Render: 1440p standard because <reason>`).
+- QA frames are checked the same way (layout, legibility at phone size, sharpness); ffprobe must show 3840×2160 for a 4K render.
