@@ -84,3 +84,6 @@ Cloud-credit watch: the weekly report states the Google Cloud credits left (Bill
 - Format: teaser per 9d.1 (ends on the unanswered question or an act cliffhanger, never the payoff; end card "FULL STORY ON THE CHANNEL"; description line 1 "▶ Full story: <Title A>" + youtu.be link; listed in the Scheduled email for the owner's 9 PM Related-video task).
 - Test window 16–30 Nov 2026: the weekly report measures Shorts → long-form conversion (weekly 2c). Until the owner decides after the 30 Nov report, keep 2–3 a week; then follow the owner's reply (stop regular Shorts, or keep 2–3).
 - Effort saved goes to long-form discovery: winnable search phrases, trend-first topics, end screens/watch-next/playlists, the share kit and daily low-CTR repackaging.
+
+## 9g. "In N Minutes" titles (owner decision 16 Nov 2026, small-channel winning formats)
+If Title A (or B) contains "in N Minutes", set N to the finished video's real length in whole minutes (round to nearest; e.g. 14:54 → 15) before uploading, in the title, the thumbnail text if it repeats it, and the record. Never promise a length the video does not have.
