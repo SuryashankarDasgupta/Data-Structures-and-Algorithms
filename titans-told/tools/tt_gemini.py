@@ -20,6 +20,8 @@ usage (run in work/):
       plan.txt: one subject per line, "sNN_slug | what to draw" (from the metadata.md visual plan).
       Writes img/sNN_slug.png at 1920x1080 (16:9 cover crop of the 2K render). Skips files that already exist, so it
       is resumable; re-run with --redo sNN_slug,sMM_slug to redraw rejected images (QA). Max 2 redraws per subject.
+  characters.txt (optional, in work/): "Name | fixed look" per line; the look is added to every subject naming them.
+  --style classic: the old navy editorial look (default is the bright cartoon look, owner decision 17 Nov 2026).
   python3 ../tools/tt_gemini.py --thumb "<full Style T thumbnail prompt>" --out thumbs/baseT.png
 Exit codes: 0 ok; 7 = prepaid credits depleted (402) -> stop, fall back to Canva, email the owner
 "Titans Told – Gemini credits low"; 8 = some subjects failed after retries (listed; draw them with Canva).
@@ -27,12 +29,42 @@ Writes gemini_log.json: images made, redraws, model, estimated cost (INR) for th
 import base64, concurrent.futures as cf, io, json, os, sys, time, urllib.request
 from PIL import Image
 
-STYLE = ("Editorial comic-book documentary illustration, bold clean ink outlines, flat cel shading with subtle paper "
+STYLE_CLASSIC = ("Editorial comic-book documentary illustration, bold clean ink outlines, flat cel shading with subtle paper "
          "grain, limited palette of deep navy #1F2A44, warm cream #F2E8D5, mustard gold #D4A017 and brown #7B4B2A, "
          "cinematic 16:9 composition, dramatic lighting, full-bleed (scene continues to every edge). ABSOLUTELY NO TEXT "
          "anywhere: no letters, words, numbers, digits, signage lettering, code on screens, logos or brand marks; every "
          "sign, screen, poster, box, label and document is blank or shows only abstract shapes. Real people only as "
          "generic stylized figures unless the prompt describes a look.")
+# Owner decision 17 Nov 2026 ("Yes, build all into the routines"): scenes now match the winning bright look of the
+# Style E thumbnails and of CEOzoned's top videos (bright clean cartoon, expressive characters, the same founder
+# design in every shot). --style classic keeps the old navy look (e.g. to finish a video already half drawn).
+STYLE_BRIGHT = ("Bright, friendly hand-drawn cartoon illustration with clean black ink outlines and soft flat colours, "
+         "expressive characters with clear emotions (surprised, worried, cheering, sweating), clean readable "
+         "composition with one clear subject that literally shows the narration line, cinematic 16:9, full-bleed "
+         "(scene continues to every edge). Daylight scenes are sunny with a light blue sky; night, crisis or "
+         "courtroom scenes keep the same clean cartoon style with a darker, moodier palette. ABSOLUTELY NO TEXT "
+         "anywhere: no letters, words, numbers, digits, signage lettering, code on screens, logos or brand marks; "
+         "every sign, screen, poster, box, label and document is blank or shows only abstract shapes. Real people "
+         "only as generic cartoon figures unless the prompt (or the character sheet) describes their look.")
+STYLE = STYLE_CLASSIC if (len(__import__("sys").argv) > 1 and "--style" in __import__("sys").argv
+                          and __import__("sys").argv[__import__("sys").argv.index("--style") + 1] == "classic") else STYLE_BRIGHT
+
+
+def characters(subj):
+    """characters.txt in work/ (one per line: "Name | fixed look"): append the fixed look of every character the
+    subject names, so the founder looks the same in every shot (owner decision 17 Nov 2026)."""
+    if not os.path.exists("characters.txt"):
+        return ""
+    add = []
+    for ln in open("characters.txt", encoding="utf-8"):
+        if "|" in ln:
+            name, look = [x.strip() for x in ln.split("|", 1)]
+            keys = [name] + [w for w in name.split() if len(w) > 3]
+            if name and any(k.lower() in subj.lower() for k in keys):
+                add.append(f"{name}: {look}")
+    return (" Character sheet (draw exactly like this): " + "; ".join(add) + ".") if add else ""
+
+
 EST_INR = {"2K": 17.0, "1K": 4.5, "4K": 30.0}   # real-time; batch = half (observed 15 Nov: ~INR 17 per 2K image)
 BATCH_FACTOR = 0.5   # rough estimate per image; the AI Studio Spend page is the truth
 
@@ -87,7 +119,7 @@ def batch_submit():
         for i in range(0, len(todo), chunk):
             part = todo[i:i + chunk]
             body = {"batch": {"display_name": f"titans-told-{int(time.time())}-{i}", "input_config": {"requests": {"requests": [
-                {"request": req_body(subj.rstrip(". ") + ". " + STYLE, "1K"), "metadata": {"key": sid}} for sid, subj in part]}}}}
+                {"request": req_body(subj.rstrip(". ") + "." + characters(subj) + " " + STYLE, "1K"), "metadata": {"key": sid}} for sid, subj in part]}}}}
             c, d = rest("POST", f"models/{MODEL}:batchGenerateContent", body)
             if c != 200:
                 print(f"batch submit failed ({c}): {d}"); json.dump(st, open(state, "w"), indent=1); sys.exit(8)
@@ -255,7 +287,7 @@ def main():
 
     def work(it):
         sid, subj, out = it
-        save_1080(call(subj.rstrip(". ") + ". " + STYLE), out)
+        save_1080(call(subj.rstrip(". ") + "." + characters(subj) + " " + STYLE), out)
         return sid
 
     with cf.ThreadPoolExecutor(int(arg("--workers", "4"))) as ex:
