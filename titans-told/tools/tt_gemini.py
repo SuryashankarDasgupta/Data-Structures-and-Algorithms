@@ -22,6 +22,7 @@ usage (run in work/):
       is resumable; re-run with --redo sNN_slug,sMM_slug to redraw rejected images (QA). Max 2 redraws per subject.
   characters.txt (optional, in work/): "Name | fixed look" per line; the look is added to every subject naming them.
   --style classic: the old navy editorial look (default is the bright cartoon look, owner decision 17 Nov 2026).
+  python3 ../tools/tt_gemini.py poses poses.txt --out img      (acting frames: "sNN_slug | b | what the character does")
   python3 ../tools/tt_gemini.py --thumb "<full Style T thumbnail prompt>" --out thumbs/baseT.png
 Exit codes: 0 ok; 7 = prepaid credits depleted (402) -> stop, fall back to Canva, email the owner
 "Titans Told – Gemini credits low"; 8 = some subjects failed after retries (listed; draw them with Canva).
@@ -179,8 +180,10 @@ def batch_fetch():
 VERTEX_FAILED = []
 
 
-def call_vertex(prompt):
+def call_vertex(prompt, image=None):
     body = req_body(prompt); body["contents"][0]["role"] = "user"
+    if image is not None:   # image editing: the source picture goes first, then the instruction
+        body["contents"][0]["parts"].insert(0, {"inlineData": {"mimeType": "image/png", "data": base64.b64encode(image).decode()}})
     req = urllib.request.Request(f"https://aiplatform.googleapis.com/v1/publishers/google/models/{MODEL}:generateContent",
                                  data=json.dumps(body).encode(),
                                  headers={"x-goog-api-key": "injected-by-proxy", "Content-Type": "application/json"})
@@ -256,7 +259,49 @@ def load_log():
     return json.load(open("gemini_log.json")) if os.path.exists("gemini_log.json") else {"model": MODEL, "size": SIZE, "images": 0, "redraws": {}, "est_inr": 0.0}
 
 
+POSE_PROMPT = ("Redraw THIS exact illustration as the next frame of a cartoon animation. Keep the same scene, camera "
+               "framing, background, lighting, colours, art style, every object, and every character's face, hair and "
+               "clothes identical. Change ONLY this: {change}. ABSOLUTELY NO TEXT anywhere.")
+
+
+def cmd_poses():
+    """Owner decision 18 Nov 2026 ("remember the animation figure in CEOzoned in moving, acting things. Same should happen
+    in ours for non-breaking news topics"): acting frames. poses.txt lines: "sNN_slug | b | <what the character does>"
+    -> img/sNN_slug__b.png, the same picture with only the pose/expression changed (tt_compose swaps the frames inside
+    the shot so the figure moves and acts)."""
+    plan, outdir = sys.argv[2], arg("--out", "img")
+    log = load_log(); jobs = []
+    for ln in open(plan, encoding="utf-8"):
+        parts = [x.strip() for x in ln.split("|")]
+        if len(parts) < 3 or ln.lstrip().startswith("#"):
+            continue
+        sid, tag, change = parts[0], parts[1], "|".join(parts[2:])
+        src = os.path.join(outdir, sid + ".png"); dst = os.path.join(outdir, f"{sid}__{tag}.png")
+        if os.path.exists(src) and not os.path.exists(dst):
+            jobs.append((src, dst, change))
+    def one(j):
+        src, dst, change = j
+        buf = io.BytesIO(); Image.open(src).convert("RGB").save(buf, "PNG")
+        save_1080(call_vertex(POSE_PROMPT.format(change=change.rstrip(". ")) + characters(change), buf.getvalue()), dst)
+        return dst
+    done, failed = 0, []
+    with cf.ThreadPoolExecutor(int(arg("--workers", "4"))) as ex:
+        futs = {ex.submit(one, j): j for j in jobs}
+        for f in cf.as_completed(futs):
+            try:
+                f.result(); done += 1
+            except Exception as e:
+                failed.append(f"{os.path.basename(futs[f][1])}: {str(e)[:120]}")
+    if failed:
+        print("pose frames failed (shots keep their single frame):\n- " + "\n- ".join(failed))
+    log["images"] += done; log["est_inr"] += done * EST_INR["1K"]
+    json.dump(log, open("gemini_log.json", "w"), indent=1)
+    print(f"poses: {done} acting frames -> {outdir}/ | est. INR {done * EST_INR['1K']:.1f}")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "poses":
+        return cmd_poses()
     log = load_log()
     if "--thumb" in sys.argv:
         out = arg("--out", "thumbs/baseT.png")

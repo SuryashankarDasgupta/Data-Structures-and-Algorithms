@@ -750,12 +750,41 @@ def up(im):
     return im if im.size == (RW, RH) else im.resize((RW, RH), Image.LANCZOS)
 
 
+_POSES = {}
+
+
+def pose_frames(scene):
+    """The shot's frames: its src plus any acting frames drawn by `tt_gemini.py poses` (img/sNN_slug__b.png, __c ...),
+    found automatically next to the src, or listed in scene["poses"]."""
+    src = scene["src"]
+    if src not in _POSES:
+        extra = scene.get("poses")
+        if not extra:
+            import glob
+            stem, ext = os.path.splitext(src)
+            extra = sorted(glob.glob(stem + "__*" + ext))
+        _POSES[src] = [src] + [e for e in extra if os.path.exists(e)]
+    return _POSES[src]
+
+
 def scene_frame(scene, t):
     dur = scene["end"] - scene["start"]
     typ = scene.get("type", "image")
     if typ == "image":
-        im = (living_image(load_img(scene["src"], True), t, dur, scene, RW, RH) if HQ
-              else living_image(load_img(scene["src"]), t, dur, scene))
+        frames = pose_frames(scene)
+        if len(frames) == 1:
+            im = (living_image(load_img(scene["src"], True), t, dur, scene, RW, RH) if HQ
+                  else living_image(load_img(scene["src"]), t, dur, scene))
+        else:
+            # acting frames (owner, 18 Nov 2026): the same shot redrawn with only the pose changed; hold each pose for an
+            # equal part of the shot and cross-dissolve 0.15 s at each change, under one continuous camera move
+            seg = dur / len(frames); k = min(len(frames) - 1, int(t / seg)); tin = t - k * seg
+            pick = lambda src: (living_image(load_img(src, True), t, dur, scene, RW, RH) if HQ
+                                else living_image(load_img(src), t, dur, scene))
+            im = pick(frames[k])
+            if k > 0 and tin < 0.15:
+                a_ = ease(tin / 0.15)
+                im = Image.blend(pick(frames[k - 1]), im, a_)
         fxk = scene.get("fx", "dust") if DEPTH else "none"
         pl = particles_layer(fxk, t, int(scene.get("start", 0) * 100))
         if pl is not None:
