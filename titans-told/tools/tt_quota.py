@@ -9,7 +9,11 @@ Reads all three ElevenLabs accounts and prints their quotas, then the ONE accoun
      month on Pro): reserve = 385,000 - (Pro used this cycle - Titans Told's Pro use this cycle), i.e. whatever BMP and
      Off-Road have not yet used of their monthly share stays untouched. No BMP data needed. If the "TT – BMP voice
      reserve" doc gives counts (--bmp-regular/--bmp-roundups), the stricter of the two reserves applies.
-     Before that reset (current cycle, Titans Told's earlier Pro use was not logged) Pro is used only with doc counts.
+     UPDATE 19 Nov 2026 (BMP session, owner upgraded MAIN to Pro annual: 600,000/month, resets ~18th each month; shares
+     BMP 355k, Off-Road 30k, Titans Told 115k, ~100k spare for either channel only when its own accounts are short):
+     share mode applies from now on (no more "off MAIN until 5 Dec"); limits and reset dates are read live. After its
+     115k, Titans Told may use the spare (--spare, default 100,000) only when the second and third accounts cannot
+     take the job, and never below BMP + Off-Road's unused share.
   4. Else NONE (pause the video and email the owner).
 Exit code 0 = an account was chosen (printed as USE=<env var>), 3 = none. --job 0 just prints the quotas."""
 import argparse, json, os, sys, time, urllib.request
@@ -21,7 +25,8 @@ ap.add_argument("--tt-pro-used", type=int, default=0, help="Titans Told characte
 ap.add_argument("--tt-pro-cap", type=int, default=115000)
 ap.add_argument("--third-spare", type=int, default=25000)
 ap.add_argument("--others-share", type=int, default=385000, help="BMP 355,000 + Off-Road ~30,000 per Pro cycle")
-SHARE_MODE_FROM = 1796572800  # 2026-12-06 16:00 UTC: a next-reset later than this means the 5 Dec reset has happened
+ap.add_argument("--spare", type=int, default=100000, help="shared Pro spare, usable only when TT's own accounts are short")
+SHARE_MODE_FROM = 0  # 19 Nov 2026: share mode now (owner upgraded MAIN to Pro annual; see docstring)
 a = ap.parse_args()
 acc = {}
 for var, label in (("ELEVENLABS_API_KEY_2", "second"), ("ELEVENLABS_API_KEY_3", "third"), ("ELEVENLABS_API_KEY", "pro")):
@@ -67,4 +72,6 @@ if p:
     print(f"pro: BMP reserve {reserve:,} ({kind}); after this job Pro would have {p['left'] - a.job:,}; TT Pro share room {room_cap:,} of {a.tt_pro_cap:,}")
     if p["left"] - a.job >= reserve and a.job <= room_cap:
         print(f"USE={p['var']} (main Pro, within Titans Told's share)"); sys.exit(0)
+    if p["left"] - a.job >= reserve and a.job <= room_cap + a.spare:
+        print(f"USE={p['var']} (main Pro, Titans Told share + shared spare; second/third were short)"); sys.exit(0)
 print("USE=NONE"); sys.exit(3)
