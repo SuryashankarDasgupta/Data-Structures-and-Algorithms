@@ -750,6 +750,18 @@ def up(im):
     return im if im.size == (RW, RH) else im.resize((RW, RH), Image.LANCZOS)
 
 
+def anim_clip(scene):
+    """work/anim/<shot>.mp4 made by tt_veo.py for this shot's illustration (img/ or img4k/ sNN_slug.png), or scene["anim"]."""
+    if scene.get("anim") and os.path.exists(scene["anim"]):
+        return scene["anim"]
+    src = scene.get("src")
+    if not src:
+        return None
+    stem = os.path.splitext(os.path.basename(src))[0]
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(src))), "anim", stem + ".mp4")
+    return p if os.path.exists(p) else None
+
+
 _POSES = {}
 
 
@@ -770,7 +782,12 @@ def pose_frames(scene):
 def scene_frame(scene, t):
     dur = scene["end"] - scene["start"]
     typ = scene.get("type", "image")
-    if typ == "image":
+    anim = anim_clip(scene) if typ == "image" else None
+    if anim:
+        # Veo key moment (owner, 18 Nov 2026): the shot's own illustration animated; plays at natural speed, slowed
+        # (to at most 0.65x) when the shot is longer than the 4 s clip
+        im = up(clip_frame({"clip": anim, "speed": max(0.65, min(1.0, 4.0 / max(dur, 0.1)))}, t))
+    elif typ == "image":
         frames = pose_frames(scene)
         if len(frames) == 1:
             im = (living_image(load_img(scene["src"], True), t, dur, scene, RW, RH) if HQ
