@@ -15,7 +15,7 @@ Short with tt_short.py (headline, word-by-word captions, FULL STORY card).
 import argparse, hashlib, json, os, re, subprocess, sys, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VOICE = "uju3wxzG5OhpWcoi3SMy"
+VOICE = open("vo/voice.txt").read().strip() if os.path.exists("vo/voice.txt") else "wWWn96OtTHu1sn8SRGEr"   # the long video's voice (19 Nov 2026: Hale)
 
 
 def dur_of(p):

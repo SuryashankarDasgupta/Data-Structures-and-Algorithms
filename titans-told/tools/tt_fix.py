@@ -17,9 +17,11 @@ Then re-run tt_qa_vo.py vo to confirm the section."""
 import difflib, json, os, re, subprocess, sys, time, urllib.request, wave
 import numpy as np
 
-VOICE = "uju3wxzG5OhpWcoi3SMy"; MODEL = "eleven_v3"; STABILITY = 0.5; SR = 44100
+MODEL = "eleven_v3"; STABILITY = 0.5; SR = 44100
 TAG = re.compile(r"\[[^\[\]]{1,40}\]")
 vo, section, sentence = sys.argv[1], sys.argv[2], sys.argv[3]
+# same voice as the rest of this video (vo/voice.txt from tt_vo; videos voiced before 19 Nov 2026 used the legacy voice)
+VOICE = open(os.path.join(vo, "voice.txt")).read().strip() if os.path.exists(os.path.join(vo, "voice.txt")) else "uju3wxzG5OhpWcoi3SMy"
 newtext = sys.argv[sys.argv.index("--fix-text") + 1] if "--fix-text" in sys.argv else sentence
 INSERT = "--insert" in sys.argv
 REUSE = sys.argv[sys.argv.index("--reuse") + 1] if "--reuse" in sys.argv else None   # splice an already-paid take (no new charge)   # the new text deliberately adds sentences: skip the length check
@@ -58,7 +60,7 @@ prev_t = " ".join(sents[max(0, si - 2):si]) if si is not None else ""
 next_t = " ".join(sents[si + 1:si + 3]) if si is not None else ""
 
 def tts(text, path, ctx=True):
-    body = {"text": text, "model_id": MODEL, "voice_settings": {"stability": STABILITY, "similarity_boost": 0.8}}
+    body = {"text": text, "model_id": MODEL, "voice_settings": {"stability": STABILITY, "similarity_boost": 0.8, **({"speed": 1.2} if VOICE == "wWWn96OtTHu1sn8SRGEr" else {})}}
     if ctx and prev_t: body["previous_text"] = prev_t
     if ctx and next_t: body["next_text"] = next_t
     req = urllib.request.Request(f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE}?output_format=mp3_44100_192",
