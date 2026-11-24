@@ -27,7 +27,20 @@ import datetime as dt, html, json, os, re, subprocess, sys, tempfile
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-JS = os.path.join(HERE, "tt_srccap.js")
+JS_CANDIDATES = [os.path.join(HERE, "tt_srccap.js"), "/tmp/ttrepo/titans-told/tools/tt_srccap.js"]
+JS_URL = "https://raw.githubusercontent.com/SuryashankarDasgupta/Data-Structures-and-Algorithms/titans-told-tools/titans-told/tools/tt_srccap.js"
+
+
+def find_js():
+    """The routines copy only tt_*.py into their tools folder, so look beside this file, then in the clone, then fetch."""
+    for p in JS_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    p = JS_CANDIDATES[0]
+    subprocess.run(["curl", "-sSL", "--max-time", "60", "--cacert", CA, "-o", p, JS_URL], check=False)
+    if not os.path.exists(p) or "chromium" not in open(p, encoding="utf-8", errors="ignore").read():
+        sys.exit("tt_srccap.js not found and could not be fetched from GitHub")
+    return p
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 CA = "/root/.ccr/ca-bundle.crt"
 
@@ -136,7 +149,7 @@ def main():
         else:
             vdir = tempfile.mkdtemp(prefix="ttvid_")
             job = {"url": url, "quote": quote, "mode": mode, "out_png": png, "out_dir": vdir, "label_date": date}
-            r = subprocess.run(["node", JS, json.dumps(job)], capture_output=True, text=True, timeout=180)
+            r = subprocess.run(["node", find_js(), json.dumps(job)], capture_output=True, text=True, timeout=180)
             try:
                 res = json.loads(r.stdout.strip().splitlines()[-1])
             except Exception:
