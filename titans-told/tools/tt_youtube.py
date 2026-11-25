@@ -366,8 +366,14 @@ def analytics(vid):
     ev, eavd = (early[0] + [None, None])[:2] if early else (0, None)
     print(f"{vid} | {it['snippet']['title']}")
     print(f"length {mmss(dur)} | views {v} | AVD {mmss(avd)} ({avp:.0f}% viewed)" if avd is not None else f"length {mmss(dur)} | views {v} | AVD n/a")
+    if avp is not None:
+        print(f"AVD target (owner, 25 Nov 2026): >= 55% viewed -> {'MET' if avp >= 55 else 'BELOW'} ({avp:.0f}%)"
+              + ("" if (v or 0) >= 50 else f"; only {v} views, not yet meaningful (judge at 50+)"))
     if ret:
         print(f"still watching at 0:30 {pct(at(30))} | at 1:00 {pct(at(60))}  (YouTube's ratio; can exceed 100% with rewatches)")
+        drops = sorted(((ret[i - 1][1] - ret[i][1], ret[i][0]) for i in range(1, len(ret))), reverse=True)[:3]
+        print("biggest drops (match these times to the script lines, rules 9t.6): " +
+              ", ".join(f"{mmss(x * dur)} -{d * 100:.0f} pts" for d, x in drops if d > 0))
     else:
         print("still watching at 0:30 / 1:00: not available yet (YouTube hides the retention curve until a video has enough views; Studio may show it)")
     print(f"first 2 days (publish day + next, Pacific dates): views {ev} | AVD {mmss(eavd)}")
