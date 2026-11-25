@@ -72,6 +72,9 @@ def token():
 
 
 FORCE_SSL = "https://www.googleapis.com/auth/youtube.force-ssl"
+# Owner decision 25 Nov 2026 ("Apply all four"): every upload is category 27 (Education) in US English, like CEOzoned and
+# FounderRoots (both cat 27, en/en-US); `settings-all` applies it to the videos already on the channel.
+CATEGORY, LANG = "27", "en-US"
 
 
 def ssl_token():
@@ -167,7 +170,7 @@ def upload(meta_path):
     if not isinstance(ch, dict) or not any(i["id"] == CHANNEL_ID for i in ch.get("items", [])):
         sys.exit("token is not for the Titans Told channel; refusing to upload")
     body = {"snippet": {"title": m["title"][:100], "description": m["description"][:5000], "tags": fit_tags(m.get("tags", [])),
-                        "categoryId": m.get("categoryId", "28"), "defaultLanguage": "en", "defaultAudioLanguage": "en"},
+                        "categoryId": CATEGORY, "defaultLanguage": LANG, "defaultAudioLanguage": LANG},
             "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False,
                        "containsSyntheticMedia": bool(m.get("containsSyntheticMedia", False))}}
     if m.get("publishAt"):
@@ -242,7 +245,7 @@ def update(meta_path, vid):
         tags.pop()
     tok = token()
     body = {"id": vid, "snippet": {"title": m["title"][:100], "description": m["description"][:5000], "tags": tags,
-                                   "categoryId": m.get("categoryId", "28"), "defaultLanguage": "en", "defaultAudioLanguage": "en"}}
+                                   "categoryId": CATEGORY, "defaultLanguage": LANG, "defaultAudioLanguage": LANG}}
     c, d, _ = api("PUT", "https://youtube.googleapis.com/youtube/v3/videos?part=snippet", tok, body)
     print("snippet update:", c, (d.get("snippet", {}).get("title") if isinstance(d, dict) else d), "| tags", len(tags), "chars", tag_chars(tags))
     if m.get("playlist") and m.get("playlistDescription"):
@@ -250,7 +253,7 @@ def update(meta_path, vid):
         it = next((i for i in d.get("items", []) if i["snippet"]["title"].lower() == m["playlist"].lower()), None)
         if it:
             c, d, _ = api("PUT", "https://youtube.googleapis.com/youtube/v3/playlists?part=snippet", tok,
-                          {"id": it["id"], "snippet": {"title": it["snippet"]["title"], "description": m["playlistDescription"][:5000], "defaultLanguage": "en"}})
+                          {"id": it["id"], "snippet": {"title": it["snippet"]["title"], "description": m["playlistDescription"][:5000], "defaultLanguage": LANG}})
             print("playlist description:", c)
 
 
@@ -306,6 +309,29 @@ def comment(vid, text):
     if c != 200:
         print("comment failed:", c, str(r)[:300]); sys.exit(4)
     print("commented:", r["id"], f"https://www.youtube.com/watch?v={vid}&lc={r['snippet']['topLevelComment']['id']} (pin it in Studio)")
+
+
+def settings_all():
+    """Set category 27 + en-US on every Titans Told video (title, description, tags kept exactly; status untouched)."""
+    tok = token()
+    c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true", tok)
+    up = ch["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    ids, pt = [], ""
+    while True:
+        c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId={up}" + (f"&pageToken={pt}" if pt else ""), tok)
+        ids += [i["contentDetails"]["videoId"] for i in d.get("items", [])]
+        pt = d.get("nextPageToken")
+        if not pt: break
+    for i in range(0, len(ids), 50):
+        c, d, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/videos?part=snippet&id=" + ",".join(ids[i:i + 50]), tok)
+        for v in d.get("items", []):
+            sn = v["snippet"]
+            if sn.get("categoryId") == CATEGORY and sn.get("defaultLanguage") == LANG and sn.get("defaultAudioLanguage") == LANG:
+                print("ok   ", v["id"], sn["title"][:60]); continue
+            body = {"id": v["id"], "snippet": {"title": sn["title"], "description": sn.get("description", ""), "tags": sn.get("tags", []),
+                                               "categoryId": CATEGORY, "defaultLanguage": LANG, "defaultAudioLanguage": LANG}}
+            c2, r, _ = api("PUT", "https://youtube.googleapis.com/youtube/v3/videos?part=snippet", tok, body)
+            print("set  " if c2 == 200 else f"FAIL {c2}", v["id"], sn["title"][:60], "" if c2 == 200 else str(r)[:160])
 
 
 def reschedule(vid, when):
@@ -397,3 +423,4 @@ if __name__ == "__main__":
     if cmd == "reschedule": reschedule(sys.argv[2], sys.argv[3])
     if cmd == "analytics": analytics(sys.argv[2])
     if cmd == "scopes": scopes()
+    if cmd == "settings-all": settings_all()

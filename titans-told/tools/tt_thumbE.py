@@ -88,11 +88,68 @@ def icon(img, kind, col, box):
     img.alpha_composite(lay)
 
 
+def fetch_logo(spec):
+    """--logo: one or more sources separated by "|", tried in order until one gives a logo of at least 128 px:
+      a local PNG/JPG (e.g. a Gemini-drawn badge), wiki:<Article> (the logo in the Wikipedia infobox),
+      commons:<File name> (Wikimedia Commons), or domain:<site.com> (the site's own high-res icon).
+    Returns a PIL RGBA image or None (then the --icon symbol is used)."""
+    import io, json, time, urllib.parse, urllib.request
+    ua = {"User-Agent": "TitansToldThumb/1.0 (YouTube thumbnail tool)"}
+    def get(url):
+        for i in range(3):
+            try:
+                return urllib.request.urlopen(urllib.request.Request(url, headers=ua), timeout=30).read()
+            except urllib.error.HTTPError as e:
+                if e.code != 429: raise
+                time.sleep(4 * (i + 1))
+        raise RuntimeError("HTTP 429 after retries")
+    for part in [x.strip() for x in spec.split("|") if x.strip()]:
+        try:
+            if os.path.exists(part):
+                im = Image.open(part).convert("RGBA")
+            elif part.startswith("wiki:"):
+                d = json.loads(get("https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&pithumbsize=512&format=json&titles="
+                                   + urllib.parse.quote(part[5:])))
+                src = next(iter(d["query"]["pages"].values())).get("thumbnail", {}).get("source")
+                if not src: raise RuntimeError("no infobox image")
+                im = Image.open(io.BytesIO(get(src))).convert("RGBA")
+            elif part.startswith("commons:"):
+                im = Image.open(io.BytesIO(get("https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/"
+                                               + urllib.parse.quote(part[8:].replace("File:", "")) + "&width=512"))).convert("RGBA")
+            elif part.startswith("domain:"):
+                im = Image.open(io.BytesIO(get("https://www.google.com/s2/favicons?sz=256&domain=" + part[7:]))).convert("RGBA")
+            else:
+                continue
+            if min(im.size) >= 128:
+                print("logo:", part)
+                return im
+            print(f"logo too small from {part} ({im.size[0]}px), trying next")
+        except Exception as e:
+            print(f"logo source failed ({part}): {str(e)[:100]}")
+    print("no logo found -> using the --icon symbol")
+    return None
+
+
+def logo_badge(img, logo, box):
+    """The real brand logo inside a white rounded square (CEOzoned / FounderRoots style, owner decision 25 Nov 2026)."""
+    x0, y0, x1, y1 = box
+    sz = x1 - x0
+    lay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(lay)
+    d.rounded_rectangle((x0 + 4, y0 + 6, x1 + 4, y1 + 6), radius=sz // 4, fill=(0, 0, 0, 70))
+    d.rounded_rectangle(box, radius=sz // 4, fill=(255, 255, 255, 255), outline=(30, 30, 30, 255), width=3)
+    img.alpha_composite(lay)
+    lg = logo.copy()
+    lg.thumbnail((int(sz * 0.78), int(sz * 0.78)), Image.LANCZOS)
+    img.alpha_composite(lg, (x0 + (sz - lg.width) // 2, y0 + (sz - lg.height) // 2))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("base"); ap.add_argument("out")
     ap.add_argument("--name", required=True); ap.add_argument("--years", required=True)
     ap.add_argument("--icon", default="star"); ap.add_argument("--iconcolor", default="#C0392B")
+    ap.add_argument("--logo", default=None, help="real brand logo sources, tried in order: \"wiki:Rolex|domain:rolex.com|badge.png\"")
     a = ap.parse_args()
     im = Image.open(a.base).convert("RGB")
     sw, sh = im.size
@@ -122,7 +179,11 @@ def main():
     d.text((yx, yy - by[1]), a.years, font=fy, fill=INK)
     col = tuple(int(a.iconcolor.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
     s = 112
-    icon(im, a.icon, col, (W - s - 26, 30, W - 26, 30 + s))
+    lg = fetch_logo(a.logo) if a.logo else None
+    if lg is not None:
+        logo_badge(im, lg, (W - s - 26, 30, W - 26, 30 + s))
+    else:
+        icon(im, a.icon, col, (W - s - 26, 30, W - 26, 30 + s))
     im.convert("RGB").save(a.out, quality=92, optimize=True)
     print("saved", a.out)
 
