@@ -35,45 +35,69 @@ def post_form(url, data):
         return json.loads(e.read() or b"{}")
 
 
+CLIENTS = (("TT_YT_CLIENT_ID", "TT_YT_CLIENT_SECRET"), ("TT_YT_RPT_CLIENT_ID", "TT_YT_RPT_CLIENT_SECRET"))
+REFRESH = ("TT_YT_REFRESH_TOKEN", "TT_YT_RPT_REFRESH_TOKEN")
+_CRED = {}
+
+
+def _grant(need):
+    """Find a (client, refresh token) pair among the Titans Told credentials whose token carries one of the scopes in
+    `need`. A refresh token only works with the client that issued it, and on 25 Nov 2026 the re-authorised
+    reporting-client token (youtube.force-ssl + yt-analytics.readonly) was saved in TT_YT_REFRESH_TOKEN, so every pair
+    is tried. youtube.force-ssl also covers uploads, thumbnails, playlists and metadata edits. Never prints a token."""
+    key = tuple(need)
+    if key in _CRED:
+        return _CRED[key]
+    errs = []
+    for cid, csec in CLIENTS:
+        for rt in REFRESH:
+            if not all(os.environ.get(k) for k in (cid, csec, rt)):
+                continue
+            d = post_form("https://oauth2.googleapis.com/token", {"client_id": os.environ[cid], "client_secret": os.environ[csec],
+                                                                   "refresh_token": os.environ[rt], "grant_type": "refresh_token"})
+            got = d.get("scope", "").split()
+            if "access_token" in d and any(n in got for n in need):
+                _CRED[key] = (d["access_token"], f"{cid.replace('_ID', '')} + {rt}", got)
+                return _CRED[key]
+            errs.append(f"{cid.replace('_ID', '')}+{rt}: {d.get('error') or 'scope ' + ' '.join(got)}")
+    _CRED[key] = (None, "; ".join(errs), [])
+    return _CRED[key]
+
+
 def token():
-    d = post_form("https://oauth2.googleapis.com/token", {
-        "client_id": env("TT_YT_CLIENT_ID"), "client_secret": env("TT_YT_CLIENT_SECRET"),
-        "refresh_token": env("TT_YT_REFRESH_TOKEN"), "grant_type": "refresh_token"})
-    if "access_token" not in d:
-        sys.exit("token refresh failed: " + d.get("error", "?") + " " + d.get("error_description", ""))
-    return d["access_token"]
+    t, how, _ = _grant(["https://www.googleapis.com/auth/youtube", "https://www.googleapis.com/auth/youtube.force-ssl"])
+    if not t:
+        sys.exit("token refresh failed: no Titans Told credential with the youtube or youtube.force-ssl scope (" + how + ")")
+    return t
 
 
 FORCE_SSL = "https://www.googleapis.com/auth/youtube.force-ssl"
 
 
 def ssl_token():
-    """Token for comments and captions (they need youtube.force-ssl, which the device-flow client can't get).
-    Owner decision 25 Nov 2026 ("Take necessary permission for comment and automate it"): the reporting web client
-    TT_YT_RPT_* is re-authorised in the OAuth Playground with yt-analytics.readonly + youtube.force-ssl on the Titans
-    Told channel. Use it when its token carries force-ssl; otherwise fall back to the main token (comment() then exits 3)."""
-    if all(os.environ.get(k) for k in ("TT_YT_RPT_CLIENT_ID", "TT_YT_RPT_CLIENT_SECRET", "TT_YT_RPT_REFRESH_TOKEN")):
-        d = post_form("https://oauth2.googleapis.com/token", {
-            "client_id": env("TT_YT_RPT_CLIENT_ID"), "client_secret": env("TT_YT_RPT_CLIENT_SECRET"),
-            "refresh_token": env("TT_YT_RPT_REFRESH_TOKEN"), "grant_type": "refresh_token"})
-        if "access_token" in d and FORCE_SSL in d.get("scope", "").split():
-            return d["access_token"]
-    return token()
+    """Token for comments and captions: needs youtube.force-ssl (owner decision 25 Nov 2026: "Take necessary permission
+    for comment and automate it"). Falls back to the upload token, so comment() exits 3 if none has force-ssl."""
+    t, _, _ = _grant([FORCE_SSL])
+    return t or token()
 
 
 def scopes():
-    """Print which scopes each Titans Told token carries (never prints a token)."""
-    for label, c, s, r in (("main (upload)", "TT_YT_CLIENT_ID", "TT_YT_CLIENT_SECRET", "TT_YT_REFRESH_TOKEN"),
-                           ("reporting/comments", "TT_YT_RPT_CLIENT_ID", "TT_YT_RPT_CLIENT_SECRET", "TT_YT_RPT_REFRESH_TOKEN")):
-        if not all(os.environ.get(k) for k in (c, s, r)):
-            print(f"{label}: not configured"); continue
-        d = post_form("https://oauth2.googleapis.com/token", {"client_id": os.environ[c], "client_secret": os.environ[s],
-                                                               "refresh_token": os.environ[r], "grant_type": "refresh_token"})
-        print(f"{label}: {d.get('scope') or 'ERROR ' + d.get('error', '?')}")
-    t = ssl_token()
-    c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=snippet&mine=true", t)
-    who = ch["items"][0]["snippet"]["title"] if c == 200 and isinstance(ch, dict) and ch.get("items") else f"HTTP {c} {str(ch)[:160]}"
-    print("comment token channel:", who)
+    """Print which scopes each Titans Told client + refresh-token pair carries, and which pair each job uses (no secrets)."""
+    for cid, csec in CLIENTS:
+        for rt in REFRESH:
+            if not all(os.environ.get(k) for k in (cid, csec, rt)):
+                continue
+            d = post_form("https://oauth2.googleapis.com/token", {"client_id": os.environ[cid], "client_secret": os.environ[csec],
+                                                                   "refresh_token": os.environ[rt], "grant_type": "refresh_token"})
+            print(f"{cid.replace('_ID', '')} + {rt}: {d.get('scope') or d.get('error')}")
+    for job, need in (("upload", ["https://www.googleapis.com/auth/youtube", FORCE_SSL]), ("comments/captions", [FORCE_SSL]),
+                      ("analytics", ["https://www.googleapis.com/auth/yt-analytics.readonly"])):
+        t, how, _ = _grant(need)
+        who = "-"
+        if t and job != "analytics":
+            c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=snippet&mine=true", t)
+            who = ch["items"][0]["snippet"]["title"] if c == 200 and isinstance(ch, dict) and ch.get("items") else f"HTTP {c}"
+        print(f"{job}: {'OK via ' + how if t else 'NONE (' + how + ')'}; channel: {who}")
 
 
 def api(method, url, tok, body=None, ctype="application/json", raw=None, headers=None):
