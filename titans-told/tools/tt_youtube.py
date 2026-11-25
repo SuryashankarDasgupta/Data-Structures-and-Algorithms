@@ -4,6 +4,7 @@ Never prints secrets. Never uses BMP's YT_* variables.
 
   tt_youtube.py check                         -> which env vars exist + channel the token belongs to
   tt_youtube.py device-start                  -> starts OAuth device flow, prints user code + URL, saves device state
+  tt_youtube.py scopes                        -> which scopes each token has + the comment token's channel (no secrets)
   tt_youtube.py device-poll                   -> polls; on success writes refresh token to ./tt_refresh_token.txt (chmod 600)
                                                  (owner then stores it as TT_YT_REFRESH_TOKEN; file is deleted after)
   tt_youtube.py update meta.json VIDEO_ID     -> SEO refresh of title/description/tags (+ playlist description)
@@ -41,6 +42,38 @@ def token():
     if "access_token" not in d:
         sys.exit("token refresh failed: " + d.get("error", "?") + " " + d.get("error_description", ""))
     return d["access_token"]
+
+
+FORCE_SSL = "https://www.googleapis.com/auth/youtube.force-ssl"
+
+
+def ssl_token():
+    """Token for comments and captions (they need youtube.force-ssl, which the device-flow client can't get).
+    Owner decision 25 Nov 2026 ("Take necessary permission for comment and automate it"): the reporting web client
+    TT_YT_RPT_* is re-authorised in the OAuth Playground with yt-analytics.readonly + youtube.force-ssl on the Titans
+    Told channel. Use it when its token carries force-ssl; otherwise fall back to the main token (comment() then exits 3)."""
+    if all(os.environ.get(k) for k in ("TT_YT_RPT_CLIENT_ID", "TT_YT_RPT_CLIENT_SECRET", "TT_YT_RPT_REFRESH_TOKEN")):
+        d = post_form("https://oauth2.googleapis.com/token", {
+            "client_id": env("TT_YT_RPT_CLIENT_ID"), "client_secret": env("TT_YT_RPT_CLIENT_SECRET"),
+            "refresh_token": env("TT_YT_RPT_REFRESH_TOKEN"), "grant_type": "refresh_token"})
+        if "access_token" in d and FORCE_SSL in d.get("scope", "").split():
+            return d["access_token"]
+    return token()
+
+
+def scopes():
+    """Print which scopes each Titans Told token carries (never prints a token)."""
+    for label, c, s, r in (("main (upload)", "TT_YT_CLIENT_ID", "TT_YT_CLIENT_SECRET", "TT_YT_REFRESH_TOKEN"),
+                           ("reporting/comments", "TT_YT_RPT_CLIENT_ID", "TT_YT_RPT_CLIENT_SECRET", "TT_YT_RPT_REFRESH_TOKEN")):
+        if not all(os.environ.get(k) for k in (c, s, r)):
+            print(f"{label}: not configured"); continue
+        d = post_form("https://oauth2.googleapis.com/token", {"client_id": os.environ[c], "client_secret": os.environ[s],
+                                                               "refresh_token": os.environ[r], "grant_type": "refresh_token"})
+        print(f"{label}: {d.get('scope') or 'ERROR ' + d.get('error', '?')}")
+    t = ssl_token()
+    c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=snippet&mine=true", t)
+    who = ch["items"][0]["snippet"]["title"] if c == 200 and isinstance(ch, dict) and ch.get("items") else f"HTTP {c} {str(ch)[:160]}"
+    print("comment token channel:", who)
 
 
 def api(method, url, tok, body=None, ctype="application/json", raw=None, headers=None):
@@ -145,12 +178,12 @@ def upload(meta_path):
         bnd = "ttbnd"
         payload = (f"--{bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").encode() + meta + \
                   (f"\r\n--{bnd}\r\nContent-Type: application/octet-stream\r\n\r\n").encode() + open(P(m["captions"]), "rb").read() + f"\r\n--{bnd}--".encode()
-        c, d, _ = api("POST", "https://www.googleapis.com/upload/youtube/v3/captions?uploadType=multipart&part=snippet", tok, raw=payload,
+        c, d, _ = api("POST", "https://www.googleapis.com/upload/youtube/v3/captions?uploadType=multipart&part=snippet", ssl_token(), raw=payload,
                       ctype=f"multipart/related; boundary={bnd}")
         if c in (200, 201):
             print("captions: uploaded")
         else:
-            print(f"captions: skipped ({c}); the device-flow token has only the youtube scope, captions.insert needs youtube.force-ssl. YouTube automatic captions are used; captions.srt stays in Drive.")
+            print(f"captions: skipped ({c}); no token with youtube.force-ssl yet (see `tt_youtube.py scopes`). YouTube automatic captions are used; captions.srt stays in Drive.")
     if m.get("playlist"):
         c, d, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50", tok)
         pl = next((i["id"] for i in d.get("items", []) if i["snippet"]["title"].lower() == m["playlist"].lower()), None)
@@ -230,7 +263,7 @@ def comment(vid, text):
     """Post the channel's first comment on a PUBLIC video, once. Exit 3 = token lacks youtube.force-ssl
     (owner must re-authorise), exit 4 = video not public yet / comments off. Pinning is not in the API:
     the owner pins it in YouTube Studio."""
-    tok = token()
+    tok = ssl_token()
     c, ch, _ = api("GET", "https://youtube.googleapis.com/youtube/v3/channels?part=id&mine=true", tok)
     me = ch["items"][0]["id"]
     c, d, _ = api("GET", f"https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={vid}&maxResults=100&order=time", tok)
@@ -333,3 +366,4 @@ if __name__ == "__main__":
     if cmd == "comment": comment(sys.argv[2], sys.argv[3])
     if cmd == "reschedule": reschedule(sys.argv[2], sys.argv[3])
     if cmd == "analytics": analytics(sys.argv[2])
+    if cmd == "scopes": scopes()
