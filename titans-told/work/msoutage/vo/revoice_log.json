@@ -1,0 +1,35 @@
+{
+ "chars": 386,
+ "fixes": [
+  {
+   "section": "ACT 5",
+   "sentence": "The cause was a hidden bug in the automation that manages DNS for one of its databases.",
+   "chars": 87,
+   "t": [
+    49.02,
+    58.22
+   ],
+   "file": "fix_1794561202.mp3"
+  },
+  {
+   "section": "ACT 5",
+   "sentence": "The cause was a hidden bug in the automation that manages DNS for one of its databases.",
+   "chars": 87,
+   "t": [
+    49.02,
+    58.22
+   ],
+   "file": "fix_1794561212.mp3"
+  },
+  {
+   "section": "ACT 5",
+   "sentence": "Just nine days later, Microsoft's own Azure Front Door, the gateway in front of many websites, failed worldwide for about eight hours after a configuration change produced data that crashed its servers.",
+   "chars": 212,
+   "t": [
+    58.22,
+    66.67
+   ],
+   "file": "fix_1794561220.mp3"
+  }
+ ]
+}
