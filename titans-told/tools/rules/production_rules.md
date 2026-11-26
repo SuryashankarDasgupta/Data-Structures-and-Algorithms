@@ -250,3 +250,15 @@ Evidence (YouTube Data API, 25 Nov 2026):
    - Inside the video, logos stay incidental; the brand is never shown endorsing us.
 4. **Upload settings:** `tt_youtube.py` now always sets category 27 (Education) and en-US. All existing videos were switched on 25 Nov 2026 (`tt_youtube.py settings-all`).
 5. **Repackage the back catalogue (production, up to 2 per run, evergreen only, oldest first):** new 9u.3 thumbnail plus the 9u.2 bracket title for Tesla, Nike, Intel, Nvidia, Google, Anthropic, Xbox, Rockstar, Theranos, Pepsi and Rolex. Do the scheduled Nintendo (30 Nov) first, before it goes public, then McDonald's at production. Log each change in the Video record and the "Repackaged" email (0e fallback applies).
+
+## 0f. Breaking/trending videos are unlimited; each one pushes the next video to a free day (owner decision 26 Nov 2026: "Don't cap the high priority/trending/breaking topics to 2 per week. It's unlimited. If you publish such video, update the slot of the next scheduled/planned video to next available (no video scheduled yet) day.")
+1. **No cap.** Every qualifying breaking or trending story is produced (0b/0c/0d). The old limits (at most 1 a day and 2 a week) are removed. The only checks left are the bar in the radar's step 3 and "never cover the same story twice" (a genuinely bigger development may get a follow-up after 24 h).
+2. **Push the next video (replaces the same-day-only move in 0b "Slots and same-day reschedule").** Right after a breaking/trending video is uploaded:
+   1. Run `tt_youtube.py scheduled` and read the drafts' target slots (Gmail "Video draft ready" emails and Drive records with `DRAFT READY`, 0e).
+   2. Take the **next** regular long video after the breaking video's go-live, whether it's uploaded and scheduled or only a planned draft.
+   3. Move it to **13:00 UTC on the first later calendar day that has no long video scheduled, public or planned**.
+      - Uploaded: `tt_youtube.py reschedule <id> <YYYY-MM-DDT13:00:00Z>` (it refuses public videos and past times).
+      - Planned draft: write the new slot in its Video record and metadata.md, and note it in its draft email thread (0e fallback applies), so production uses the new date.
+   4. Move only that one video; later videos keep their slots. Never move a public video.
+   5. Note "moved from <old> to <new> because of the breaking video <title>" in its record and in the breaking video's Scheduled email.
+3. If two breaking videos go out back to back, each one pushes the then-next regular video. The content routine treats the moved slot as filled and drafts for the remaining free days.
